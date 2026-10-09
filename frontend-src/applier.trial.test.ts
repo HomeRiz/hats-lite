@@ -8,6 +8,7 @@ import {
   button,
   countdownText,
   overlay,
+  resetDom,
   setup,
   trialAt,
   trialStateAt,
@@ -16,12 +17,12 @@ import {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(LOCAL_START * 1000);
-  document.body.replaceChildren();
+  resetDom();
 });
 
 afterEach(() => {
   vi.useRealTimers();
-  document.body.replaceChildren();
+  resetDom();
 });
 
 describe("createApplier startTrial", () => {
@@ -128,3 +129,23 @@ describe("createApplier dispose", () => {
     expect(env.unsub).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("createApplier stale actions", () => {
+  it("does not apply the old previous selection after a new trial starts", async () => {
+    const env = setup();
+    env.handlers["hats_lite/trial_state"] = trialStateAt(0);
+    env.applier.onHass(env.hass);
+    await advance(32_000);
+    let cancel: (value: object) => void = () => undefined;
+    env.handlers["hats_lite/trial_cancel"] = () => new Promise((resolve) => (cancel = resolve));
+    button("Revert").click();
+    await advance(0);
+    env.handlers["hats_lite/trial_start"] = () => ({ trial: trialAt(SERVER_START + 32) });
+    await env.applier.startTrial(PREVIOUS, CANDIDATE);
+    cancel({ revert: PREVIOUS });
+    await advance(0);
+    expect(env.fire).toHaveBeenCalledTimes(1);
+    expect(env.fire).toHaveBeenCalledWith("settheme", CANDIDATE);
+  });
+});
+

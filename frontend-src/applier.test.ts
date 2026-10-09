@@ -8,6 +8,7 @@ import {
   button,
   countdownText,
   overlay,
+  resetDom,
   setup,
   shadow,
   trialAt,
@@ -17,12 +18,12 @@ import {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(LOCAL_START * 1000);
-  document.body.replaceChildren();
+  resetDom();
 });
 
 afterEach(() => {
   vi.useRealTimers();
-  document.body.replaceChildren();
+  resetDom();
 });
 
 describe("createApplier resume and subscribe", () => {
@@ -200,7 +201,7 @@ describe("createApplier confirmation", () => {
     await advance(32_000);
     env.handlers["hats_lite/trial_state"] = trialStateAt(32);
     await env.applier.refresh();
-    expect(document.body.querySelectorAll("[data-hats-lite-confirm]")).toHaveLength(1);
+    expect(document.documentElement.querySelectorAll("[data-hats-lite-confirm]")).toHaveLength(1);
     expect(env.mount).toHaveBeenCalledTimes(1);
     expect(countdownText()).toBe("Reverting in 3 seconds");
     await advance(3000);

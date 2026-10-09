@@ -1,6 +1,7 @@
 import type { Selection, TrialInfo } from "./lib/types";
 import { phaseAt, secondsLeft, serverOffset, serverTime } from "./lib/trialMachine";
 import { callWS, subscribe, type Hass } from "./lib/ws";
+import { createOverlay } from "./confirmOverlay";
 
 export interface ApplierDeps {
   getHass(): Hass | undefined;
@@ -14,72 +15,11 @@ export interface ApplierDeps {
 type StateResult = { trial: TrialInfo | null; now: number };
 type RevertEvent = { type?: string; selection?: Selection };
 
-const STYLES = `
-:host {
-  all: initial;
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 24px;
-  z-index: 2147483647;
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-}
-.box {
-  pointer-events: auto;
-  box-sizing: border-box;
-  max-width: calc(100vw - 32px);
-  padding: 20px 24px;
-  background: #111111;
-  color: #ffffff;
-  border: 2px solid #ffffff;
-  border-radius: 12px;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 20px;
-  line-height: 1.4;
-  text-align: center;
-}
-.title {
-  margin: 0 0 4px;
-  font-size: 24px;
-  font-weight: bold;
-  color: #ffffff;
-}
-.countdown {
-  margin: 0 0 16px;
-  font-size: 20px;
-  color: #ffffff;
-}
-.actions {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-}
-button {
-  min-width: 120px;
-  min-height: 48px;
-  padding: 10px 20px;
-  border-radius: 8px;
-  border: 2px solid #ffffff;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 20px;
-  font-weight: bold;
-  cursor: pointer;
-}
-button.keep {
-  background: #ffffff;
-  color: #111111;
-}
-button.revert {
-  background: #111111;
-  color: #ffffff;
-}
-button:focus-visible {
-  outline: 4px solid #ffd400;
-  outline-offset: 3px;
-}
-`;
+const SUBSCRIBE_RETRIES = 3;
+const SUBSCRIBE_RETRY_MS = 5000;
+const REFRESH_RETRIES = 5;
+const REFRESH_RETRY_MS = 3000;
+const NOT_READY = "Home Assistant is not ready";
 
 function errorCode(err: unknown): string | undefined {
   if (typeof err === "object" && err !== null && "code" in err) {
@@ -88,23 +28,31 @@ function errorCode(err: unknown): string | undefined {
   return undefined;
 }
 
-function countdownLabel(seconds: number): string {
-  return `Reverting in ${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+function countdownLabel(seconds: number, offline: boolean): string {
+  const text = `Reverting in ${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+  return offline ? `Could not reach Home Assistant. ${text}.` : text;
 }
 
 export function createApplier(deps: ApplierDeps) {
   let hass: Hass | undefined;
-  let waiters: Array<(h: Hass) => void> = [];
+  let waiters: Array<{ resolve: (h: Hass) => void; reject: (e: Error) => void }> = [];
+  let unavailable = false;
   let trial: TrialInfo | null = null;
   let offset = 0;
+  let generation = 0;
+  let busyGeneration: number | null = null;
+  let offline = false;
   let tickId: number | null = null;
-  let host: HTMLElement | null = null;
-  let countdown: HTMLElement | null = null;
-  let keepButton: HTMLButtonElement | null = null;
+  const laterIds = new Set<number>();
   let unsubscribe: (() => void) | null = null;
   let started = false;
   let disposed = false;
-  let acting = false;
+
+  const overlay = createOverlay({
+    mount: (el) => deps.mount(el),
+    onKeep: () => void keepTheme(),
+    onRevert: () => void revert(),
+  });
 
   function current(): Hass | undefined {
     return hass ?? deps.getHass();
@@ -113,57 +61,16 @@ export function createApplier(deps: ApplierDeps) {
   function waitHass(): Promise<Hass> {
     const ready = current();
     if (ready) return Promise.resolve(ready);
-    return new Promise((resolve) => waiters.push(resolve));
+    if (unavailable) return Promise.reject(new Error(NOT_READY));
+    return new Promise((resolve, reject) => waiters.push({ resolve, reject }));
   }
 
-  function build(): void {
-    const el = document.createElement("div");
-    el.setAttribute("data-hats-lite-confirm", "");
-    const root = el.attachShadow({ mode: "open" });
-    const style = document.createElement("style");
-    style.textContent = STYLES;
-    const box = document.createElement("div");
-    box.className = "box";
-    box.setAttribute("role", "alertdialog");
-    box.setAttribute("aria-live", "assertive");
-    box.setAttribute("aria-label", "Keep this theme?");
-    const title = document.createElement("p");
-    title.className = "title";
-    title.textContent = "Keep this theme?";
-    const status = document.createElement("p");
-    status.className = "countdown";
-    status.setAttribute("data-role", "countdown");
-    const actions = document.createElement("div");
-    actions.className = "actions";
-    const keep = document.createElement("button");
-    keep.type = "button";
-    keep.className = "keep";
-    keep.textContent = "Keep";
-    keep.addEventListener("click", () => void keepTheme());
-    const revertButton = document.createElement("button");
-    revertButton.type = "button";
-    revertButton.className = "revert";
-    revertButton.textContent = "Revert";
-    revertButton.addEventListener("click", () => void revert());
-    actions.append(keep, revertButton);
-    box.append(title, status, actions);
-    root.append(style, box);
-    host = el;
-    countdown = status;
-    keepButton = keep;
-  }
-
-  function show(left: number): void {
-    if (!host) build();
-    if (countdown) countdown.textContent = countdownLabel(left);
-    if (host && !host.isConnected) {
-      deps.mount(host);
-      keepButton?.focus();
-    }
-  }
-
-  function hide(): void {
-    if (host && host.isConnected) host.remove();
+  function later(fn: () => void, ms: number): void {
+    const id = deps.setTimer(() => {
+      laterIds.delete(id);
+      if (!disposed) fn();
+    }, ms);
+    laterIds.add(id);
   }
 
   function clearTick(): void {
@@ -180,7 +87,8 @@ export function createApplier(deps: ApplierDeps) {
   function endTrial(): void {
     clearTick();
     trial = null;
-    hide();
+    offline = false;
+    overlay.hide();
   }
 
   function tick(revertIfExpired: boolean): void {
@@ -189,10 +97,10 @@ export function createApplier(deps: ApplierDeps) {
     const t = serverTime(offset, deps.now());
     const phase = phaseAt(trial, t);
     if (phase === "trying") {
-      hide();
+      overlay.hide();
       schedule((trial.try_until - t) * 1000);
     } else if (phase === "confirming") {
-      show(secondsLeft(trial, t));
+      overlay.show(countdownLabel(secondsLeft(trial, t), offline));
       schedule((trial.confirm_until - t) * 1000);
     } else if (revertIfExpired) {
       void revert();
@@ -207,28 +115,32 @@ export function createApplier(deps: ApplierDeps) {
     tick(revertIfExpired);
   }
 
-  async function refresh(revertIfExpired = true): Promise<void> {
+  async function refresh(revertIfExpired = true): Promise<boolean> {
     const h = current();
-    if (!h || disposed) return;
+    if (!h || disposed) return false;
     let result: StateResult;
     try {
       result = await callWS<StateResult>(h, { type: "hats_lite/trial_state" });
     } catch {
-      return;
+      return false;
     }
-    if (disposed) return;
+    if (disposed || busyGeneration === generation) return true;
     if (!result.trial) {
       endTrial();
-      return;
+      return true;
     }
     offset = serverOffset(result.now, deps.now());
+    const same = trial !== null && trial.started_at === result.trial.started_at;
+    if (!same) generation += 1;
     adopt(result.trial, revertIfExpired);
+    return true;
   }
 
   async function revert(): Promise<void> {
-    if (!trial || acting) return;
+    if (!trial || busyGeneration === generation) return;
+    const g = generation;
     const previous = trial.previous;
-    acting = true;
+    busyGeneration = g;
     endTrial();
     try {
       const h = current();
@@ -241,26 +153,39 @@ export function createApplier(deps: ApplierDeps) {
           if (errorCode(err) === "no_trial") return;
         }
       }
-      if (!disposed) deps.fire("settheme", target);
+      if (!disposed && g === generation) deps.fire("settheme", target);
     } finally {
-      acting = false;
+      if (busyGeneration === g) busyGeneration = null;
     }
   }
 
   async function keepTheme(): Promise<void> {
-    if (!trial || acting) return;
+    if (!trial || busyGeneration === generation) return;
     const h = current();
     if (!h) return;
-    acting = true;
-    endTrial();
+    const g = generation;
+    busyGeneration = g;
     try {
       await callWS(h, { type: "hats_lite/trial_accept" });
-    } catch {
-      acting = false;
-      await refresh(false);
+    } catch (err) {
+      if (busyGeneration === g) busyGeneration = null;
+      if (disposed || g !== generation) return;
+      const code = errorCode(err);
+      if (code === "too_late" || code === "no_trial") {
+        endTrial();
+        await refresh(false);
+        return;
+      }
+      offline = true;
+      if (trial) {
+        clearTick();
+        tick(true);
+      }
+      await refresh(true);
       return;
     }
-    acting = false;
+    if (busyGeneration === g) busyGeneration = null;
+    if (g === generation) endTrial();
   }
 
   function onEvent(event: RevertEvent): void {
@@ -269,15 +194,19 @@ export function createApplier(deps: ApplierDeps) {
     deps.fire("settheme", event.selection);
   }
 
-  async function begin(h: Hass): Promise<void> {
+  async function trySubscribe(h: Hass, attempt: number): Promise<void> {
     try {
       const stop = await subscribe<RevertEvent>(h, { type: "hats_lite/subscribe" }, onEvent);
       if (disposed) stop();
       else unsubscribe = stop;
     } catch {
-      unsubscribe = null;
+      if (attempt < SUBSCRIBE_RETRIES) later(() => void trySubscribe(h, attempt + 1), SUBSCRIBE_RETRY_MS);
     }
-    await refresh(true);
+  }
+
+  async function loadWithRetry(attempt: number): Promise<void> {
+    const ok = await refresh(true);
+    if (!ok && attempt < REFRESH_RETRIES) later(() => void loadWithRetry(attempt + 1), REFRESH_RETRY_MS);
   }
 
   function onHass(next: Hass): void {
@@ -285,11 +214,19 @@ export function createApplier(deps: ApplierDeps) {
     hass = next;
     const pending = waiters;
     waiters = [];
-    pending.forEach((resolve) => resolve(next));
+    pending.forEach((w) => w.resolve(next));
     if (!started) {
       started = true;
-      void begin(next);
+      void loadWithRetry(0);
+      void trySubscribe(next, 0);
     }
+  }
+
+  function markUnavailable(): void {
+    unavailable = true;
+    const pending = waiters;
+    waiters = [];
+    pending.forEach((w) => w.reject(new Error(NOT_READY)));
   }
 
   async function startTrial(previous: Selection, candidate: Selection): Promise<void> {
@@ -301,7 +238,8 @@ export function createApplier(deps: ApplierDeps) {
     });
     if (disposed) return;
     offset = serverOffset(result.trial.started_at, deps.now());
-    acting = false;
+    generation += 1;
+    offline = false;
     adopt(result.trial, true);
     deps.fire("settheme", candidate);
   }
@@ -309,8 +247,10 @@ export function createApplier(deps: ApplierDeps) {
   function dispose(): void {
     disposed = true;
     clearTick();
+    laterIds.forEach((id) => deps.clearTimer(id));
+    laterIds.clear();
     trial = null;
-    hide();
+    overlay.hide();
     waiters = [];
     if (unsubscribe) {
       unsubscribe();
@@ -318,7 +258,7 @@ export function createApplier(deps: ApplierDeps) {
     }
   }
 
-  return { onHass, dispose, startTrial, refresh };
+  return { onHass, dispose, startTrial, refresh, markUnavailable };
 }
 
 declare global {
@@ -342,7 +282,7 @@ function install(): void {
     },
     now: () => Date.now() / 1000,
     mount: (el) => {
-      document.body.appendChild(el);
+      document.documentElement.appendChild(el);
     },
     setTimer: (fn, ms) => window.setTimeout(fn, ms),
     clearTimer: (id) => window.clearTimeout(id),
@@ -358,6 +298,7 @@ function install(): void {
     }
     attempts += 1;
     if (attempts < 240) window.setTimeout(poll, 500);
+    else applier.markUnavailable();
   };
   poll();
 }

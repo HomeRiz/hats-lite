@@ -20,6 +20,15 @@ export function trialAt(startedAt: number): TrialInfo {
 
 export type Handler = (msg: Record<string, unknown>) => unknown;
 
+const created: Array<{ dispose(): void }> = [];
+
+export function resetDom(): void {
+  created.splice(0).forEach((a) => a.dispose());
+  document.documentElement
+    .querySelectorAll("[data-hats-lite-confirm]")
+    .forEach((el) => el.remove());
+}
+
 export function setup(options: { hassReady?: boolean } = {}) {
   const hassReady = options.hassReady ?? true;
   const calls: Record<string, unknown>[] = [];
@@ -30,6 +39,7 @@ export function setup(options: { hassReady?: boolean } = {}) {
     "hats_lite/trial_cancel": () => ({ revert: PREVIOUS }),
     "hats_lite/trial_start": () => ({ trial: trialAt(SERVER_START) }),
   };
+  const control: { subscribeError: Error | null } = { subscribeError: null };
   let eventCb: ((event: unknown) => void) | null = null;
   const unsub = vi.fn();
   const hass = {
@@ -43,6 +53,7 @@ export function setup(options: { hassReady?: boolean } = {}) {
       }),
       subscribeMessage: vi.fn(async (cb: (event: unknown) => void, msg: Record<string, unknown>) => {
         calls.push(msg);
+        if (control.subscribeError) throw control.subscribeError;
         eventCb = cb;
         return unsub;
       }),
@@ -52,7 +63,7 @@ export function setup(options: { hassReady?: boolean } = {}) {
     events.push(`fire:${name}:${JSON.stringify(detail)}`);
   });
   const mount = vi.fn((el: HTMLElement) => {
-    document.body.appendChild(el);
+    document.documentElement.appendChild(el);
   });
   const setTimer = vi.fn((fn: () => void, ms: number) => globalThis.setTimeout(fn, ms) as unknown as number);
   const clearTimer = vi.fn((id: number) => globalThis.clearTimeout(id));
@@ -64,12 +75,14 @@ export function setup(options: { hassReady?: boolean } = {}) {
     setTimer,
     clearTimer,
   });
+  created.push(applier);
   return {
     applier,
     hass,
     calls,
     events,
     handlers,
+    control,
     fire,
     mount,
     setTimer,
@@ -85,7 +98,7 @@ export async function advance(ms: number) {
 }
 
 export function overlay(): HTMLElement | null {
-  return document.body.querySelector("[data-hats-lite-confirm]");
+  return document.documentElement.querySelector("[data-hats-lite-confirm]");
 }
 
 export function shadow(): ShadowRoot {
