@@ -1,6 +1,12 @@
 {
   "title": "HATS Lite",
   "config": {
+    "step": {
+      "user": {
+        "title": "HATS Lite",
+        "description": "Add HATS Lite to get the theme panel in the sidebar."
+      }
+    },
     "abort": {
       "single_instance_allowed": "HATS Lite is already set up. Only one instance is allowed."
     }

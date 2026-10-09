@@ -12,7 +12,7 @@ def test_manifest_and_hacs_files():
     assert manifest["config_flow"] is True
     hacs = json.loads((ROOT / "hacs.json").read_text())
     assert hacs["name"] == "HATS Lite"
-    assert (ROOT / "brand/icon.png").exists()
+    assert (ROOT / "custom_components/hats_lite/brand/icon.png").exists()
 
 
 def test_constants():
