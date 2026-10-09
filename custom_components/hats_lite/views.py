@@ -37,10 +37,15 @@ class BackgroundUploadView(HomeAssistantView):
         user = request[KEY_HASS_USER]
         if user is None or not user.is_admin:
             return self.json_message("Admin access required", HTTPStatus.FORBIDDEN)
-        reader = await request.multipart()
-        field = await reader.next()
-        while field is not None and field.name != "file":
+        if not request.content_type.startswith("multipart/"):
+            return self.json_message("Expected a multipart upload", HTTPStatus.BAD_REQUEST)
+        try:
+            reader = await request.multipart()
             field = await reader.next()
+            while field is not None and field.name != "file":
+                field = await reader.next()
+        except (AssertionError, ValueError, KeyError):
+            return self.json_message("Expected a multipart upload", HTTPStatus.BAD_REQUEST)
         if field is None:
             return self.json_message("Missing file", HTTPStatus.BAD_REQUEST)
         body = bytearray()

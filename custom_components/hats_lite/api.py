@@ -1,7 +1,8 @@
-import json
+import hashlib
 import os
 import re
 import time
+import uuid
 
 try:
     import probatio as vol
@@ -14,16 +15,23 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .catalog import CatalogError, load_catalog
 from .const import DOMAIN
+from .sources import hacs_loader, public_loader
 from .theme_fetch import ThemeFetchError, fetch_theme_yaml
 from .theme_sanitizer import ThemeError, parse_themes, theme_to_yaml
 from .trial import accept, phase, revert_due, start_trial, trial_to_dict
 
-PUBLIC_CATALOG_URL = "https://data-v2.hacs.xyz/theme/data.json"
-MAX_CATALOG_BYTES = 4 * 1024 * 1024
-CHUNK_SIZE = 65536
 SLUG_MAX = 40
 FILE_PREFIX = "hats_lite_"
 REVERT_EVENT = "hats_lite_revert"
+CATALOG_TTL = 300
+MAX_NAME = 80
+MAX_VARIABLES = 300
+MAX_KEY = 80
+MAX_VALUE = 4096
+MAX_COLOR = 32
+SELECTION_KEYS = {"theme", "dark", "primaryColor", "accentColor"}
+COLOR_RE = re.compile(r"[a-zA-Z0-9(),.%\s#-]{1,32}")
+MODE_KEYS = {"dark", "light"}
 
 
 def _now():
@@ -35,70 +43,89 @@ def theme_slug(name):
     return slug or None
 
 
-async def hacs_loader(hass):
-    try:
-        hacs = hass.data.get("hacs")
-        if hacs is None:
-            return None
-        repositories = getattr(hacs, "repositories", None)
-        items = getattr(repositories, "list_all", None)
-        if callable(items):
-            items = items()
-        if items is None:
-            return None
-        out = []
-        for repo in list(items):
-            data = getattr(repo, "data", None)
-            if data is None:
-                continue
-            out.append(
-                {
-                    "full_name": getattr(data, "full_name", None),
-                    "category": getattr(data, "category", None),
-                    "description": getattr(data, "description", None),
-                    "stargazers_count": getattr(data, "stargazers_count", 0),
-                    "installed": getattr(data, "installed", False),
-                    "last_commit": getattr(data, "last_commit", None),
-                    "id": getattr(data, "id", None),
-                }
-            )
-        return out
-    except Exception:
+def theme_file_name(name):
+    slug = theme_slug(name)
+    if slug is None:
         return None
+    digest = hashlib.sha1(str(name).encode("utf-8")).hexdigest()[:6]
+    return f"{FILE_PREFIX}{slug}-{digest}.yaml"
 
 
-async def public_loader(hass):
-    session = async_get_clientsession(hass)
-    async with session.get(PUBLIC_CATALOG_URL) as resp:
-        if resp.status != 200:
-            raise CatalogError(f"Catalog request failed with status {resp.status}")
-        length = resp.content_length
-        if isinstance(length, int) and length > MAX_CATALOG_BYTES:
-            raise CatalogError("Catalog response is too large")
-        body = bytearray()
-        async for chunk in resp.content.iter_chunked(CHUNK_SIZE):
-            body.extend(chunk)
-            if len(body) > MAX_CATALOG_BYTES:
-                raise CatalogError("Catalog response is too large")
-    return json.loads(bytes(body))
+def valid_selection(value):
+    if not isinstance(value, dict) or not set(value) <= SELECTION_KEYS:
+        return False
+    theme = value.get("theme")
+    if not isinstance(theme, str) or not 1 <= len(theme) <= MAX_NAME:
+        return False
+    if "dark" in value and not isinstance(value["dark"], bool):
+        return False
+    for key in ("primaryColor", "accentColor"):
+        if key in value:
+            color = value[key]
+            if not isinstance(color, str) or len(color) > MAX_COLOR or not COLOR_RE.fullmatch(color):
+                return False
+    return True
+
+
+def _variables(value):
+    if not isinstance(value, dict) or len(value) > MAX_VARIABLES:
+        raise vol.Invalid("Too many variables")
+    for key, item in value.items():
+        if not isinstance(key, str) or len(key) > MAX_KEY:
+            raise vol.Invalid("Invalid variable name")
+        if isinstance(item, bool) or not isinstance(item, (str, int, float)):
+            raise vol.Invalid("Invalid variable value")
+        if isinstance(item, str) and len(item) > MAX_VALUE:
+            raise vol.Invalid("Variable value is too long")
+    return value
+
+
+def _modes(value):
+    if not isinstance(value, dict) or not set(value) <= MODE_KEYS:
+        raise vol.Invalid("Invalid modes")
+    for block in value.values():
+        if isinstance(block, dict):
+            _variables(block)
+    return value
 
 
 async def load_catalog_for_hass(hass):
-    return await load_catalog(lambda: hacs_loader(hass), lambda: public_loader(hass))
+    data = hass.data.get(DOMAIN)
+    cached = data.get("catalog_cache") if data else None
+    if cached is not None and _now() < cached[0]:
+        return cached[1]
+    result = await load_catalog(lambda: hacs_loader(hass), lambda: public_loader(hass))
+    data = hass.data.get(DOMAIN)
+    if data is not None:
+        data["catalog_cache"] = (_now() + CATALOG_TTL, result)
+    return result
 
 
 def _data(hass):
-    return hass.data[DOMAIN]
+    return hass.data.get(DOMAIN)
+
+
+def _loaded(hass, connection, msg):
+    data = _data(hass)
+    if data is None:
+        connection.send_error(msg["id"], "not_loaded", "HATS Lite is not loaded")
+    return data
 
 
 def cancel_watchdog(hass, user_id):
-    handle = _data(hass)["handles"].pop(user_id, None)
+    data = _data(hass)
+    if data is None:
+        return
+    handle = data["handles"].pop(user_id, None)
     if handle is not None:
         handle.cancel()
 
 
 def cancel_all_watchdogs(hass):
-    for user_id in list(_data(hass)["handles"]):
+    data = _data(hass)
+    if data is None:
+        return
+    for user_id in list(data["handles"]):
         cancel_watchdog(hass, user_id)
 
 
@@ -133,8 +160,12 @@ async def _watchdog_fire(hass, user_id):
 
 
 async def async_start_user_trial(hass, user_id, previous, candidate):
+    store = _data(hass)["store"]
+    existing = store.get_trial(user_id)
+    if existing is not None:
+        previous = existing.previous
     trial = start_trial(user_id, previous, candidate, _now())
-    await _data(hass)["store"].async_set_trial(trial)
+    await store.async_set_trial(trial)
     schedule_watchdog(hass, trial)
     return trial
 
@@ -152,6 +183,8 @@ async def async_restore_watchdogs(hass):
 @websocket_api.websocket_command({vol.Required("type"): "hats_lite/catalog"})
 @websocket_api.async_response
 async def ws_catalog(hass, connection, msg):
+    if _loaded(hass, connection, msg) is None:
+        return
     try:
         entries, source = await load_catalog_for_hass(hass)
     except CatalogError:
@@ -170,6 +203,8 @@ async def ws_catalog(hass, connection, msg):
 )
 @websocket_api.async_response
 async def ws_theme(hass, connection, msg):
+    if _loaded(hass, connection, msg) is None:
+        return
     session = async_get_clientsession(hass)
     try:
         text = await fetch_theme_yaml(session, msg["full_name"], msg["commit"], msg.get("path"))
@@ -177,7 +212,7 @@ async def ws_theme(hass, connection, msg):
         connection.send_error(msg["id"], "fetch_failed", str(err))
         return
     try:
-        themes = parse_themes(text)
+        themes = await hass.async_add_executor_job(parse_themes, text)
     except ThemeError as err:
         connection.send_error(msg["id"], "invalid_theme", str(err))
         return
@@ -193,6 +228,11 @@ async def ws_theme(hass, connection, msg):
 )
 @websocket_api.async_response
 async def ws_trial_start(hass, connection, msg):
+    if _loaded(hass, connection, msg) is None:
+        return
+    if not valid_selection(msg["previous"]) or not valid_selection(msg["candidate"]):
+        connection.send_error(msg["id"], "invalid_selection", "Invalid theme selection")
+        return
     trial = await async_start_user_trial(hass, connection.user.id, msg["previous"], msg["candidate"])
     connection.send_result(msg["id"], {"trial": trial_to_dict(trial)})
 
@@ -200,8 +240,11 @@ async def ws_trial_start(hass, connection, msg):
 @websocket_api.websocket_command({vol.Required("type"): "hats_lite/trial_state"})
 @callback
 def ws_trial_state(hass, connection, msg):
+    data = _loaded(hass, connection, msg)
+    if data is None:
+        return
     now = _now()
-    trial = _data(hass)["store"].get_trial(connection.user.id)
+    trial = data["store"].get_trial(connection.user.id)
     connection.send_result(
         msg["id"],
         {
@@ -215,7 +258,10 @@ def ws_trial_state(hass, connection, msg):
 @websocket_api.websocket_command({vol.Required("type"): "hats_lite/trial_accept"})
 @websocket_api.async_response
 async def ws_trial_accept(hass, connection, msg):
-    store = _data(hass)["store"]
+    data = _loaded(hass, connection, msg)
+    if data is None:
+        return
+    store = data["store"]
     trial = store.get_trial(connection.user.id)
     if trial is None:
         connection.send_error(msg["id"], "no_trial", "No trial in progress")
@@ -231,7 +277,10 @@ async def ws_trial_accept(hass, connection, msg):
 @websocket_api.websocket_command({vol.Required("type"): "hats_lite/trial_cancel"})
 @websocket_api.async_response
 async def ws_trial_cancel(hass, connection, msg):
-    store = _data(hass)["store"]
+    data = _loaded(hass, connection, msg)
+    if data is None:
+        return
+    store = data["store"]
     trial = store.get_trial(connection.user.id)
     if trial is None:
         connection.send_error(msg["id"], "no_trial", "No trial in progress")
@@ -244,8 +293,11 @@ async def ws_trial_cancel(hass, connection, msg):
 @websocket_api.websocket_command({vol.Required("type"): "hats_lite/subscribe"})
 @callback
 def ws_subscribe(hass, connection, msg):
+    data = _loaded(hass, connection, msg)
+    if data is None:
+        return
     msg_id = msg["id"]
-    subscribers = _data(hass)["subscribers"].setdefault(connection.user.id, {})
+    subscribers = data["subscribers"].setdefault(connection.user.id, {})
     key = (id(connection), msg_id)
     subscribers[key] = lambda event: connection.send_event(msg_id, event)
 
@@ -260,39 +312,62 @@ def ws_subscribe(hass, connection, msg):
 def _write_theme(directory, file_name, text):
     os.makedirs(directory, exist_ok=True)
     target = os.path.join(directory, file_name)
-    temp = target + ".tmp"
-    with open(temp, "w", encoding="utf-8") as handle:
-        handle.write(text)
-    os.replace(temp, target)
+    temp = f"{target}.{uuid.uuid4().hex}.tmp"
+    try:
+        with open(temp, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.replace(temp, target)
+    finally:
+        try:
+            os.remove(temp)
+        except OSError:
+            pass
+
+
+def _build_theme_text(name, variables, modes):
+    for block in modes.values():
+        if not isinstance(block, dict):
+            raise ThemeError("Theme modes must be mappings of variables")
+    try:
+        parsed = parse_themes(theme_to_yaml(name, variables, modes))
+    except (TypeError, ValueError, AttributeError) as err:
+        if isinstance(err, ThemeError):
+            raise
+        raise ThemeError("Theme variables are not valid") from err
+    clean = parsed.get(name)
+    if clean is None:
+        raise ThemeError("No theme found in this file")
+    return theme_to_yaml(name, clean["vars"], clean.get("modes"))
 
 
 @websocket_api.require_admin
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "hats_lite/save_theme",
-        vol.Required("name"): str,
-        vol.Required("variables"): dict,
-        vol.Optional("modes", default={}): dict,
+        vol.Required("name"): vol.All(str, vol.Length(min=1, max=MAX_NAME)),
+        vol.Required("variables"): _variables,
+        vol.Optional("modes", default={}): _modes,
     }
 )
 @websocket_api.async_response
 async def ws_save_theme(hass, connection, msg):
+    if _loaded(hass, connection, msg) is None:
+        return
     name = msg["name"]
-    slug = theme_slug(name)
+    file_name = theme_file_name(name)
     try:
-        if slug is None:
+        if file_name is None:
             raise ThemeError("Theme name has no usable characters")
-        parsed = parse_themes(theme_to_yaml(name, msg["variables"], msg["modes"]))
-        if name not in parsed:
-            raise ThemeError("No theme found in this file")
-        clean = parsed[name]
-        text = theme_to_yaml(name, clean["vars"], clean.get("modes"))
-    except (ThemeError, TypeError, ValueError) as err:
+        text = await hass.async_add_executor_job(_build_theme_text, name, msg["variables"], msg["modes"])
+    except ThemeError as err:
         connection.send_error(msg["id"], "invalid_theme", str(err))
         return
-    file_name = f"{FILE_PREFIX}{slug}.yaml"
-    await hass.async_add_executor_job(_write_theme, hass.config.path("themes"), file_name, text)
-    await hass.services.async_call("frontend", "reload_themes", blocking=True)
+    try:
+        await hass.async_add_executor_job(_write_theme, hass.config.path("themes"), file_name, text)
+        await hass.services.async_call("frontend", "reload_themes", blocking=True)
+    except Exception:
+        connection.send_error(msg["id"], "save_failed", "The theme could not be saved")
+        return
     connection.send_result(msg["id"], {"file": file_name})
 
 

@@ -1,0 +1,60 @@
+import json
+
+import aiohttp
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+from .catalog import CatalogError
+
+PUBLIC_CATALOG_URL = "https://data-v2.hacs.xyz/theme/data.json"
+MAX_CATALOG_BYTES = 4 * 1024 * 1024
+CHUNK_SIZE = 65536
+CATALOG_TIMEOUT = 15
+
+
+async def hacs_loader(hass):
+    try:
+        hacs = hass.data.get("hacs")
+        if hacs is None:
+            return None
+        repositories = getattr(hacs, "repositories", None)
+        items = getattr(repositories, "list_all", None)
+        if callable(items):
+            items = items()
+        if items is None:
+            return None
+        out = []
+        for repo in list(items):
+            data = getattr(repo, "data", None)
+            if data is None:
+                continue
+            out.append(
+                {
+                    "full_name": getattr(data, "full_name", None),
+                    "category": getattr(data, "category", None),
+                    "description": getattr(data, "description", None),
+                    "stargazers_count": getattr(data, "stargazers_count", 0),
+                    "installed": getattr(data, "installed", False),
+                    "last_commit": getattr(data, "last_commit", None),
+                    "id": getattr(data, "id", None),
+                }
+            )
+        return out
+    except Exception:
+        return None
+
+
+async def public_loader(hass):
+    session = async_get_clientsession(hass)
+    timeout = aiohttp.ClientTimeout(total=CATALOG_TIMEOUT)
+    async with session.get(PUBLIC_CATALOG_URL, timeout=timeout) as resp:
+        if resp.status != 200:
+            raise CatalogError(f"Catalog request failed with status {resp.status}")
+        length = resp.content_length
+        if isinstance(length, int) and length > MAX_CATALOG_BYTES:
+            raise CatalogError("Catalog response is too large")
+        body = bytearray()
+        async for chunk in resp.content.iter_chunked(CHUNK_SIZE):
+            body.extend(chunk)
+            if len(body) > MAX_CATALOG_BYTES:
+                raise CatalogError("Catalog response is too large")
+    return await hass.async_add_executor_job(json.loads, bytes(body))

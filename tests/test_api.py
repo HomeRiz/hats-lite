@@ -1,4 +1,4 @@
-import json
+import re
 from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
@@ -109,7 +109,7 @@ async def test_trial_start_state_accept(hass, setup, hass_ws_client, hass_admin_
 
 async def test_trial_accept_too_late(hass, setup, hass_ws_client, clock):
     client = await hass_ws_client(hass)
-    await _call(client, 1, "trial_start", previous={}, candidate={})
+    await _call(client, 1, "trial_start", previous={"theme": "a"}, candidate={"theme": "b"})
     handle = hass.data[DOMAIN]["handles"].pop(next(iter(hass.data[DOMAIN]["handles"])))
     handle.cancel()
     clock["t"] = 1100.0
@@ -152,7 +152,7 @@ async def test_watchdog_reverts_after_confirm_window(hass, setup, hass_ws_client
 async def test_trials_are_per_user(hass, setup, hass_ws_client, hass_read_only_access_token, hass_admin_user):
     admin = await hass_ws_client(hass)
     other = await hass_ws_client(hass, hass_read_only_access_token)
-    await _call(admin, 1, "trial_start", previous={"x": 1}, candidate={"x": 2})
+    await _call(admin, 1, "trial_start", previous={"theme": "a"}, candidate={"theme": "b"})
     msg = await _call(other, 1, "trial_state")
     assert msg["result"]["trial"] is None
     msg = await _call(other, 2, "trial_accept")
@@ -177,8 +177,8 @@ async def test_save_theme_writes_file_and_reloads(hass, setup, hass_ws_client, t
         name="Sunset Glow", variables={"primary-color": "#ff8800"}, modes={"dark": {"primary-color": "#aa5500"}},
     )
     assert msg["success"] is True
-    assert msg["result"] == {"file": "hats_lite_sunset-glow.yaml"}
-    written = yaml.safe_load((tmp_path / "themes" / "hats_lite_sunset-glow.yaml").read_text())
+    assert msg["result"] == {"file": api.theme_file_name("Sunset Glow")}
+    written = yaml.safe_load((tmp_path / "themes" / api.theme_file_name("Sunset Glow")).read_text())
     assert written == {"Sunset Glow": {"primary-color": "#ff8800", "modes": {"dark": {"primary-color": "#aa5500"}}}}
     assert len(calls) == 1
 
@@ -191,7 +191,7 @@ async def test_save_theme_drops_unsafe_values(hass, setup, hass_ws_client, tmp_p
         name="Mix", variables={"primary-color": "#fff", "bad": "url(javascript:alert(1))"}, modes={},
     )
     assert msg["success"] is True
-    written = yaml.safe_load((tmp_path / "themes" / "hats_lite_mix.yaml").read_text())
+    written = yaml.safe_load((tmp_path / "themes" / api.theme_file_name("Mix")).read_text())
     assert written == {"Mix": {"primary-color": "#fff"}}
 
 
@@ -208,6 +208,14 @@ async def test_save_theme_rejects_invalid_names_and_empty_themes(hass, setup, ha
     assert calls == []
 
 
+def test_file_name_is_stable_and_distinct():
+    a = api.theme_file_name("Sunset Glow")
+    assert a == api.theme_file_name("Sunset Glow")
+    assert a != api.theme_file_name("Sunset-Glow")
+    assert re.fullmatch(r"hats_lite_sunset-glow-[0-9a-f]{6}\.yaml", a)
+    assert api.theme_file_name("!!!") is None
+
+
 def test_slug():
     assert api.theme_slug("Sunset Glow") == "sunset-glow"
     assert api.theme_slug("A" * 80) == "a" * 40
@@ -215,118 +223,123 @@ def test_slug():
     assert api.theme_slug("  Dark_Mode 2 ") == "dark-mode-2"
 
 
-async def test_hacs_loader_is_defensive(hass):
-    assert await api.hacs_loader(hass) is None
-    hass.data["hacs"] = object()
-    assert await api.hacs_loader(hass) is None
-
-    class Data:
-        full_name = "a/b"
-        category = "theme"
-        description = "d"
-        stargazers_count = 4
-        installed = True
-        last_commit = "abc"
-        id = 7
-
-    class Repo:
-        data = Data()
-
-    class Repos:
-        list_all = [Repo(), object()]
-
-    class Hacs:
-        repositories = Repos()
-
-    hass.data["hacs"] = Hacs()
-    result = await api.hacs_loader(hass)
-    assert result[0] == {
-        "full_name": "a/b", "category": "theme", "description": "d",
-        "stargazers_count": 4, "installed": True, "last_commit": "abc", "id": 7,
-    }
-    assert len(result) == 1
-
-    class Broken:
-        @property
-        def repositories(self):
-            raise RuntimeError("boom")
-
-    hass.data["hacs"] = Broken()
-    assert await api.hacs_loader(hass) is None
+async def test_second_trial_keeps_the_original_previous(hass, setup, hass_ws_client, clock):
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": "hats_lite/subscribe"})
+    await client.receive_json()
+    await _call(client, 2, "trial_start", previous={"theme": "A"}, candidate={"theme": "B"})
+    first = next(iter(hass.data[DOMAIN]["handles"].values()))
+    msg = await _call(client, 3, "trial_start", previous={"theme": "B"}, candidate={"theme": "C"})
+    assert msg["result"]["trial"]["previous"] == {"theme": "A"}
+    assert msg["result"]["trial"]["candidate"] == {"theme": "C"}
+    assert first.cancelled()
+    assert len(hass.data[DOMAIN]["handles"]) == 1
+    clock["t"] = 1040.0
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=40))
+    await hass.async_block_till_done()
+    msg = await client.receive_json()
+    assert msg["event"] == {"type": "revert", "selection": {"theme": "A"}}
 
 
-class FakeContent:
-    def __init__(self, body):
-        self.body = body
-
-    async def iter_chunked(self, size):
-        for i in range(0, len(self.body), size):
-            yield self.body[i : i + size]
-
-
-class FakeResp:
-    def __init__(self, body, status=200, length=None):
-        self.status = status
-        self.content = FakeContent(body)
-        self.content_length = length if length is not None else len(body)
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
-
-
-class FakeSession:
-    def __init__(self, resp):
-        self.resp = resp
-        self.urls = []
-
-    def get(self, url, **kwargs):
-        self.urls.append(url)
-        return self.resp
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {},
+        {"dark": True},
+        {"theme": ""},
+        {"theme": "x" * 81},
+        {"theme": "x" * 3_000_000},
+        {"theme": 5},
+        {"theme": {"a": 1}},
+        {"theme": "x", "extra": 1},
+        {"theme": "x", "dark": "yes"},
+        {"theme": "x", "primaryColor": "#" + "1" * 40},
+        {"theme": "x", "primaryColor": "red;background:url(x)"},
+        {"theme": "x", "accentColor": 5},
+        {"theme": "x", "primaryColor": {"a": 1}},
+    ],
+)
+async def test_trial_start_rejects_bad_selections(hass, setup, hass_ws_client, bad):
+    client = await hass_ws_client(hass)
+    msg = await _call(client, 1, "trial_start", previous={"theme": "a"}, candidate=bad)
+    assert msg["error"]["code"] == "invalid_selection"
+    msg = await _call(client, 2, "trial_start", previous=bad, candidate={"theme": "a"})
+    assert msg["error"]["code"] == "invalid_selection"
+    assert hass.data[DOMAIN]["store"].all_trials() == []
 
 
-async def test_public_loader_parses_json(hass):
-    session = FakeSession(FakeResp(json.dumps({"1": {"full_name": "a/b"}}).encode()))
-    with patch.object(api, "async_get_clientsession", return_value=session):
-        data = await api.public_loader(hass)
-    assert data == {"1": {"full_name": "a/b"}}
-    assert session.urls == ["https://data-v2.hacs.xyz/theme/data.json"]
+async def test_trial_start_accepts_valid_selections(hass, setup, hass_ws_client):
+    client = await hass_ws_client(hass)
+    full = {"theme": "x", "dark": True, "primaryColor": "#112233", "accentColor": "#abc"}
+    msg = await _call(client, 1, "trial_start", previous={"theme": "Default"}, candidate=full)
+    assert msg["success"] is True
+    assert msg["result"]["trial"]["candidate"] == full
+    msg = await _call(client, 2, "trial_start", previous={"theme": "Default"}, candidate={"theme": "y", "primaryColor": "rgb(1, 2, 3)"})
+    assert msg["success"] is True
 
 
-async def test_public_loader_fails_on_bad_status_size_and_json(hass):
-    for resp in (
-        FakeResp(b"{}", status=500),
-        FakeResp(b"{}", length=api.MAX_CATALOG_BYTES + 1),
-        FakeResp(b"x" * (api.MAX_CATALOG_BYTES + 1), length=-1),
-        FakeResp(b"not json"),
-    ):
-        with patch.object(api, "async_get_clientsession", return_value=FakeSession(resp)):
-            with pytest.raises(Exception):
-                await api.public_loader(hass)
+async def test_save_theme_schema_bounds(hass, setup, hass_ws_client, tmp_path):
+    client = await hass_ws_client(hass)
+    with patch.object(api, "theme_to_yaml") as dump:
+        many = {f"k{i}": "#fff" for i in range(301)}
+        msg = await _call(client, 1, "save_theme", name="N", variables=many, modes={})
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "invalid_format"
+        msg = await _call(client, 2, "save_theme", name="N", variables={"a": "x" * 4097}, modes={})
+        assert msg["error"]["code"] == "invalid_format"
+        msg = await _call(client, 3, "save_theme", name="N", variables={"k" * 81: "x"}, modes={})
+        assert msg["error"]["code"] == "invalid_format"
+        msg = await _call(client, 4, "save_theme", name="", variables={"a": "x"}, modes={})
+        assert msg["error"]["code"] == "invalid_format"
+        msg = await _call(client, 5, "save_theme", name="N" * 81, variables={"a": "x"}, modes={})
+        assert msg["error"]["code"] == "invalid_format"
+        msg = await _call(client, 6, "save_theme", name="N", variables={"a": "x"}, modes={"sepia": {}})
+        assert msg["error"]["code"] == "invalid_format"
+        msg = await _call(client, 7, "save_theme", name="N", variables={"a": "x"}, modes={"dark": many})
+        assert msg["error"]["code"] == "invalid_format"
+        dump.assert_not_called()
 
 
-async def test_load_catalog_for_hass_prefers_hacs(hass):
-    class Data:
-        full_name = "a/b"
-        category = "theme"
-        description = ""
-        stargazers_count = 1
-        installed = False
-        last_commit = None
-        id = 1
+async def test_save_theme_mode_not_a_mapping(hass, setup, hass_ws_client, tmp_path):
+    client = await hass_ws_client(hass)
+    msg = await _call(client, 1, "save_theme", name="N", variables={"primary-color": "#fff"}, modes={"dark": "oops"})
+    assert msg["error"]["code"] == "invalid_theme"
+    assert "dict" not in msg["error"]["message"]
+    assert not (tmp_path / "themes").exists()
 
-    class Repo:
-        data = Data()
 
-    class Repos:
-        list_all = [Repo()]
+async def test_save_theme_failure_returns_save_failed(hass, setup, hass_ws_client, tmp_path):
+    client = await hass_ws_client(hass)
+    async_mock_service(hass, "frontend", "reload_themes")
+    with patch.object(api, "_write_theme", side_effect=OSError("disk")):
+        msg = await _call(client, 1, "save_theme", name="N", variables={"primary-color": "#fff"}, modes={})
+    assert msg["error"]["code"] == "save_failed"
 
-    class Hacs:
-        repositories = Repos()
 
-    hass.data["hacs"] = Hacs()
-    entries, source = await api.load_catalog_for_hass(hass)
-    assert source == "hacs"
-    assert entries[0]["full_name"] == "a/b"
+def test_write_theme_cleans_temp_on_failure(tmp_path):
+    with patch.object(api.os, "replace", side_effect=OSError("x")):
+        with pytest.raises(OSError):
+            api._write_theme(str(tmp_path), "f.yaml", "a: 1\n")
+    assert list(tmp_path.iterdir()) == []
+
+
+async def test_commands_answer_not_loaded_after_unload(hass, setup, hass_ws_client):
+    client = await hass_ws_client(hass)
+    assert await hass.config_entries.async_unload(setup.entry_id)
+    await hass.async_block_till_done()
+    msg = await _call(client, 1, "trial_state")
+    assert msg["error"]["code"] == "not_loaded"
+    msg = await _call(client, 2, "catalog")
+    assert msg["error"]["code"] == "not_loaded"
+    msg = await _call(client, 3, "trial_start", previous={"theme": "a"}, candidate={"theme": "b"})
+    assert msg["error"]["code"] == "not_loaded"
+    api.cancel_all_watchdogs(hass)
+
+
+async def test_subscribers_survive_reload(hass, setup, hass_ws_client, hass_admin_user):
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": "hats_lite/subscribe"})
+    await client.receive_json()
+    assert await hass.config_entries.async_reload(setup.entry_id)
+    await hass.async_block_till_done()
+    assert len(hass.data[DOMAIN]["subscribers"][hass_admin_user.id]) == 1

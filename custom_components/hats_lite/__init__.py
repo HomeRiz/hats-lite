@@ -13,6 +13,7 @@ from .views import BackgroundUploadView
 
 APPLIER_URL = STATIC_URL + "/hats-lite-applier.js"
 PANEL_URL = STATIC_URL + "/hats-lite-panel.js"
+SUBSCRIBERS_KEY = DOMAIN + "_subscribers"
 HTTP_FLAG = DOMAIN + "_http_registered"
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
 
@@ -28,7 +29,8 @@ def _prepare_frontend_dir(path):
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     store = LiteStore(Store(hass, 1, DOMAIN))
     await store.async_load()
-    hass.data[DOMAIN] = {"store": store, "handles": {}, "subscribers": {}}
+    subscribers = hass.data.setdefault(SUBSCRIBERS_KEY, {})
+    hass.data[DOMAIN] = {"store": store, "handles": {}, "subscribers": subscribers}
     if not hass.data.get(HTTP_FLAG):
         api.async_register_commands(hass)
         hass.http.register_view(BackgroundUploadView())

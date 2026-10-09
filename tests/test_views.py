@@ -92,3 +92,15 @@ async def test_anonymous_is_unauthorized(hass, hass_client_no_auth, tmp_path):
     client = await hass_client_no_auth()
     resp = await client.post(URL, data=_form(PNG))
     assert resp.status == 401
+
+
+async def test_non_multipart_body_is_a_400(hass, hass_client, tmp_path):
+    await _setup(hass, tmp_path)
+    client = await hass_client()
+    resp = await client.post(URL, data=PNG)
+    assert resp.status == 400
+    assert await resp.json() == {"message": "Expected a multipart upload"}
+    resp = await client.post(URL, data=b"abc", headers={"Content-Type": "multipart/form-data"})
+    assert resp.status == 400
+    resp = await client.post(URL)
+    assert resp.status == 400
