@@ -15,7 +15,9 @@ def _entry(full_name, description, stars, installed, last_commit, hacs_id):
 
 def _stars(record):
     value = record.get("stars", record.get("stargazers_count", 0))
-    return value if isinstance(value, int) else 0
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return value
 
 
 def _sorted(entries):
@@ -23,6 +25,8 @@ def _sorted(entries):
 
 
 def normalize_hacs_entries(entries):
+    if not isinstance(entries, list):
+        raise CatalogError("Unexpected HACS repository list")
     out = []
     for record in entries:
         if not isinstance(record, dict) or record.get("category") != "theme":
@@ -70,7 +74,7 @@ async def load_catalog(hacs_loader, public_loader):
         records = await hacs_loader()
     except Exception:
         records = None
-    if records is not None:
+    if isinstance(records, list):
         return normalize_hacs_entries(records), "hacs"
     try:
         data = await public_loader()

@@ -62,3 +62,74 @@ async def test_rejects_oversized_and_http_errors():
         await fetch_theme_yaml(Session({url: Resp(body=b"x" * 1_048_577)}), "a/b", "abc1234", "themes/x.yaml")
     with pytest.raises(ThemeFetchError):
         await fetch_theme_yaml(Session({url: Resp(status=404)}), "a/b", "abc1234", "themes/x.yaml")
+
+
+class Content:
+    def __init__(self, chunks):
+        self.chunks = chunks
+        self.consumed = 0
+
+    async def iter_chunked(self, size):
+        for chunk in self.chunks:
+            self.consumed += 1
+            yield chunk
+
+
+class StreamResp(Resp):
+    def __init__(self, chunks, status=200, content_length=None):
+        super().__init__(status=status)
+        self.content = Content(chunks)
+        self.content_length = content_length
+
+    async def read(self):
+        raise AssertionError("read must not be called")
+
+
+RAW = "https://raw.githubusercontent.com/a/b/abc1234/themes/x.yaml"
+TREE = "https://api.github.com/repos/a/b/git/trees/abc1234?recursive=1"
+
+
+async def test_content_length_rejected_without_reading():
+    resp = StreamResp([b"x"], content_length=2_000_000)
+    with pytest.raises(ThemeFetchError):
+        await fetch_theme_yaml(Session({RAW: resp}), "a/b", "abc1234", "themes/x.yaml")
+    assert resp.content.consumed == 0
+
+
+async def test_streamed_body_stops_early():
+    resp = StreamResp([b"x" * 65536] * 32)
+    with pytest.raises(ThemeFetchError):
+        await fetch_theme_yaml(Session({RAW: resp}), "a/b", "abc1234", "themes/x.yaml")
+    assert resp.content.consumed <= 17
+
+
+async def test_streamed_small_body_works():
+    resp = StreamResp([b"X:\n", b"  a: b\n"])
+    assert "a: b" in await fetch_theme_yaml(Session({RAW: resp}), "a/b", "abc1234", "themes/x.yaml")
+
+
+async def test_invalid_tree_json_rejected():
+    resp = StreamResp([b"{not json"])
+    with pytest.raises(ThemeFetchError):
+        await fetch_theme_yaml(Session({TREE: resp}), "a/b", "abc1234")
+
+
+async def test_streamed_tree_works():
+    tree = StreamResp([b'{"tree": [{"path": "themes/x.yaml", "type": "blob"}]}'])
+    raw = StreamResp([b"X:\n  a: b\n"])
+    assert "a: b" in await fetch_theme_yaml(Session({TREE: tree, RAW: raw}), "a/b", "abc1234")
+
+
+@pytest.mark.parametrize(
+    "commit,path",
+    [("main/./x", "themes/x.yaml"), ("a//b", "themes/x.yaml"), ("/abc", "themes/x.yaml"), ("abc1234", "a/./b.yaml"), ("abc1234", "a//b.yaml"), ("abc1234", "/a.yaml")],
+)
+async def test_rejects_dot_and_empty_segments(commit, path):
+    with pytest.raises(ThemeFetchError):
+        await fetch_theme_yaml(Session({}), "a/b", commit, path)
+
+
+async def test_truncated_tree_without_theme_raises():
+    session = Session({TREE: Resp(payload={"truncated": True, "tree": [{"path": "README.md", "type": "blob"}]})})
+    with pytest.raises(ThemeFetchError, match="truncated"):
+        await fetch_theme_yaml(session, "a/b", "abc1234")

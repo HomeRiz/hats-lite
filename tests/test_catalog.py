@@ -60,3 +60,29 @@ async def test_load_catalog_both_fail():
 
     with pytest.raises(CatalogError):
         await load_catalog(hacs, public)
+
+
+def test_bool_stars_count_as_zero():
+    entries = [
+        {"full_name": "a/flag", "category": "theme", "stars": True},
+        {"full_name": "a/real", "category": "theme", "stars": 1},
+    ]
+    out = normalize_hacs_entries(entries)
+    assert [e["full_name"] for e in out] == ["a/real", "a/flag"]
+    assert out[1]["stars"] == 0
+
+
+def test_non_list_hacs_input_raises():
+    with pytest.raises(CatalogError):
+        normalize_hacs_entries("x")
+
+
+async def test_non_list_hacs_result_falls_back():
+    async def hacs():
+        return "x"
+
+    async def public():
+        return {"1": {"full_name": "x/y", "stargazers_count": 3, "last_commit": "abc1234"}}
+
+    entries, source = await load_catalog(hacs, public)
+    assert source == "public"
