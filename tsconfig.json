@@ -10,5 +10,5 @@
     "experimentalDecorators": true,
     "useDefineForClassFields": false
   },
-  "include": ["frontend/**/*.ts", "tests/**/*.ts"]
+  "include": ["frontend-src/**/*.ts", "vitest.config.ts"]
 }
