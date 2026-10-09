@@ -65,7 +65,8 @@ describe("buildDesignerVars", () => {
       "/local/bg/a.png",
     ];
     for (const value of ok) {
-      for (const kind of ["preset", "upload"] as const) {
+      const kinds = value.startsWith("https://") ? (["upload"] as const) : (["preset", "upload"] as const);
+      for (const kind of kinds) {
         const v = buildDesignerVars({ ...base, background: { kind, value } });
         expect(v["lovelace-background"]).toBe(`center / cover no-repeat fixed url('${value}')`);
       }
@@ -98,5 +99,13 @@ describe("buildDesignerVars", () => {
         buildDesignerVars({ ...base, background: { kind: "preset", value } }),
       ).toThrow("Invalid background");
     }
+  });
+  it("rejects https backgrounds for presets", () => {
+    expect(() =>
+      buildDesignerVars({
+        ...base,
+        background: { kind: "preset", value: "https://example.com/a.jpg" },
+      }),
+    ).toThrow("Invalid background");
   });
 });

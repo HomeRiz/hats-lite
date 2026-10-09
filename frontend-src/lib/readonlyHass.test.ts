@@ -90,4 +90,92 @@ describe("makeReadOnlyHass", () => {
     clearBlocked();
     expect(blockedCalls).toHaveLength(0);
   });
+
+  it("blocks lovelace config saves", async () => {
+    const { hass, ro } = build();
+    await ro.callWS({ type: "lovelace/config_save" });
+    expect(hass.callWS).not.toHaveBeenCalled();
+    expect(blockedCalls).toEqual(["ws:lovelace/config_save"]);
+  });
+
+  it("hides auth", () => {
+    const { ro } = build();
+    expect((ro as unknown as { auth?: unknown }).auth).toBeUndefined();
+  });
+
+  it("guards the connection", async () => {
+    const sendMessagePromise = vi.fn(async (m: { type: string }) => `c:${m.type}`);
+    const sendMessage = vi.fn();
+    const unsub = vi.fn();
+    const subscribeMessage = vi.fn(async () => unsub);
+    const ro = makeReadOnlyHass({
+      connection: { connected: true, haVersion: "1", socket: {}, sendMessagePromise, sendMessage, subscribeMessage, other: 1 },
+    });
+    const c = ro.connection as unknown as Record<string, (...a: unknown[]) => unknown> & { connected: boolean; haVersion: string };
+    expect(c.connected).toBe(true);
+    expect(c.haVersion).toBe("1");
+    expect(c.socket).toBeUndefined();
+    expect(c.other).toBeUndefined();
+    await expect(c.sendMessagePromise({ type: "call_service" })).resolves.toBeUndefined();
+    await expect(c.sendMessagePromise({ type: "get_states" })).resolves.toBe("c:get_states");
+    c.sendMessage({ type: "call_service" });
+    c.sendMessage({ type: "get_states" }, 4);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    const off = (await c.subscribeMessage(() => undefined, { type: "call_service" })) as () => void;
+    expect(typeof off).toBe("function");
+    expect(off()).toBeUndefined();
+    expect(subscribeMessage).not.toHaveBeenCalled();
+    await c.subscribeMessage(() => undefined, { type: "render_template" });
+    expect(subscribeMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessagePromise).toHaveBeenCalledTimes(1);
+    expect(blockedCalls).toEqual(["ws:call_service", "ws:call_service", "ws:call_service"]);
+  });
+
+  it("blocks object valued methods", async () => {
+    const { hass, ro } = build();
+    const method = { toString: () => "POST" };
+    await expect(ro.fetchWithAuth("/a", { method } as never)).resolves.toBeUndefined();
+    await expect(ro.callApi(method as never, "x")).resolves.toBeUndefined();
+    expect(hass.fetchWithAuth).not.toHaveBeenCalled();
+    expect(hass.callApi).not.toHaveBeenCalled();
+  });
+
+  it("reads a getter method once and passes a copy", async () => {
+    const { hass, ro } = build();
+    let reads = 0;
+    const init = {
+      get method() {
+        reads += 1;
+        return reads === 1 ? "GET" : "POST";
+      },
+    };
+    await ro.fetchWithAuth("/a", init);
+    const passed = hass.fetchWithAuth.mock.calls[0][1] as { method: string };
+    expect(passed).not.toBe(init);
+    expect(passed.method).toBe("GET");
+    expect(passed.method).toBe("GET");
+  });
+
+  it("keeps states read only", () => {
+    const { hass, ro } = build();
+    const states = ro.states as Record<string, { state: string }>;
+    const attempt = (fn: () => void) => {
+      try {
+        fn();
+      } catch {
+        return;
+      }
+    };
+    attempt(() => {
+      states.x = { state: "1" };
+    });
+    attempt(() => {
+      states["light.a"].state = "off";
+    });
+    attempt(() => {
+      delete states["light.a"];
+    });
+    expect(hass.states).toEqual({ "light.a": { state: "on" } });
+    expect(states["light.a"].state).toBe("on");
+  });
 });

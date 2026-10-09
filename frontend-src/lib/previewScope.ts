@@ -1,7 +1,9 @@
 import type { ThemeEntry } from "./types";
 
 const KEY_PATTERN = /^[A-Za-z0-9_-]+$/;
-const UNSAFE_VALUE = /[;{}<]/;
+const UNSAFE_VALUE = /[;{}<\r\n]|\/\*|\*\/|javascript:|expression\(/i;
+const QUOTE = /['"]/;
+const allowedQuotedKeys = ["lovelace-background", "background-image"];
 
 export function resolveVars(
   theme: ThemeEntry,
@@ -15,13 +17,14 @@ function isScopedKey(key: string): boolean {
   return !key.startsWith("card-mod-") && !key.startsWith("uix-");
 }
 
-function isSafeValue(value: unknown): value is string {
-  return typeof value === "string" && !UNSAFE_VALUE.test(value);
+function isSafeValue(key: string, value: unknown): value is string {
+  if (typeof value !== "string" || UNSAFE_VALUE.test(value)) return false;
+  return !QUOTE.test(value) || allowedQuotedKeys.includes(key);
 }
 
 function safeEntries(vars: Record<string, string>): [string, string][] {
   return Object.entries(vars).filter(
-    ([key, value]) => isScopedKey(key) && isSafeValue(value),
+    ([key, value]) => isScopedKey(key) && isSafeValue(key, value),
   );
 }
 

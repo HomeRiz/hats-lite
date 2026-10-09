@@ -34,6 +34,21 @@ describe("toStyleText", () => {
       toStyleText({ "card-mod-card": "x", "uix-root": "y", keep: "z" }),
     ).toBe("--keep:z;");
   });
+  it("drops newlines and comment markers", () => {
+    expect(toStyleText({ a: "x\ny", b: "x\ry", c: "/* x", d: "x */" })).toBe("");
+  });
+  it("drops quotes except for background keys", () => {
+    expect(toStyleText({ a: "'x'", b: '"x"' })).toBe("");
+    expect(toStyleText({ "lovelace-background": "url('x')" })).toBe(
+      "--lovelace-background:url('x');",
+    );
+    expect(toStyleText({ "background-image": 'url("x")' })).toBe(
+      '--background-image:url("x");',
+    );
+  });
+  it("drops script-like values", () => {
+    expect(toStyleText({ a: "JavaScript:x", b: "Expression(1)" })).toBe("");
+  });
   it("drops non string values", () => {
     expect(toStyleText({ a: 5 as unknown as string })).toBe("");
   });

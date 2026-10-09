@@ -29,10 +29,14 @@ function checkColor(value: string): string {
   return value;
 }
 
-function checkBackground(value: string | undefined): string {
+function checkBackground(value: string | undefined, allowHttps: boolean): string {
   if (
     typeof value !== "string" ||
-    !(DATA_URL.test(value) || HTTPS_URL.test(value) || LOCAL_PATH.test(value))
+    !(
+      DATA_URL.test(value) ||
+      LOCAL_PATH.test(value) ||
+      (allowHttps && HTTPS_URL.test(value))
+    )
   ) {
     throw new Error("Invalid background");
   }
@@ -56,7 +60,7 @@ export function buildDesignerVars(input: DesignerInput): Record<string, string> 
   const bg = input.background;
   if (bg && bg.kind !== "none") {
     vars["lovelace-background"] =
-      `center / cover no-repeat fixed url('${checkBackground(bg.value)}')`;
+      `center / cover no-repeat fixed url('${checkBackground(bg.value, bg.kind === "upload")}')`;
   }
   return vars;
 }
