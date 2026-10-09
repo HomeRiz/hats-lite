@@ -178,3 +178,78 @@ def test_float_special_values_rejected():
 def test_bool_rejected():
     assert sanitize_value(True) is None
     assert sanitize_value(False) is None
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "java​script:1",
+        "java⁠script:1",
+        "java­script:1",
+        "java\U000e0001script:1",
+        "@​import 'x'",
+        "image­set(x)",
+    ],
+)
+def test_invisible_characters_rejected(bad):
+    assert sanitize_value(bad) is None
+
+
+def test_var_pattern_strict():
+    assert sanitize_value("url(var(--x) http://e)") is None
+    assert sanitize_value("url(var(--bg-image))") == "url(var(--bg-image))"
+
+
+def test_data_url_invalid_base64():
+    assert sanitize_value("url(data:image/png;base64,AAA!)") is None
+
+
+def test_data_url_with_trailing_javascript():
+    assert sanitize_value("url(data:image/png;base64,AAA)javascript:1") is None
+
+
+def test_url_count_limit():
+    assert sanitize_value("url(/local/a.png)" * 50) is not None
+    assert sanitize_value("url(/local/a.png)" * 51) is None
+
+
+def test_performance_malformed_urls():
+    import time
+
+    start = time.perf_counter()
+    result = sanitize_value("url(" * 100000)
+    elapsed = time.perf_counter() - start
+    assert result is None
+    assert elapsed < 2.0
+
+
+def test_performance_unclosed_urls():
+    import time
+
+    start = time.perf_counter()
+    result = sanitize_value("url(x" * 100000 + ")")
+    elapsed = time.perf_counter() - start
+    assert result is None
+    assert elapsed < 2.0
+
+
+def test_performance_many_data_urls():
+    import time
+
+    start = time.perf_counter()
+    result = sanitize_value("url(data:image/png;base64," * 30000)
+    elapsed = time.perf_counter() - start
+    assert result is None
+    assert elapsed < 2.0
+
+
+def test_performance_large_valid_url():
+    import time
+
+    start = time.perf_counter()
+    result = sanitize_value(
+        "center / cover no-repeat url('data:image/jpeg;base64," + "A" * 700000 + "')"
+    )
+    elapsed = time.perf_counter() - start
+    assert result is not None
+    assert elapsed < 2.0

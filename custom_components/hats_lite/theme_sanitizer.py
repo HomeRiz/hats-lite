@@ -14,9 +14,17 @@ MAX_VALUE = 900_000
 
 CSS_ESCAPE = re.compile(r"\\([0-9a-fA-F]{1,6}) ?|\\(.)", re.DOTALL)
 CSS_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
-URL_PATTERN = re.compile(r"url\((['\"]?)(.+?)\1\)", re.DOTALL)
-VAR_PATTERN = re.compile(r"^var\(", re.IGNORECASE)
-BASE64_PATTERN = re.compile(r"^[A-Za-z0-9+/]*={0,2}$")
+VAR_PATTERN = re.compile(r"^var\(--[a-z0-9_-]+\)\Z", re.IGNORECASE)
+BASE64_PATTERN = re.compile(r"^[a-z0-9+/]*={0,2}\Z")
+
+INVISIBLE_CHARS = frozenset([
+    'ㅤ',
+    '᠎',
+    '­',
+    '︀', '︁', '︂', '︃', '︄',
+    '︅', '︆', '︇', '︈', '︉',
+    '︊', '︋', '︌', '︍', '︎', '️',
+])
 
 REJECT_PATTERNS = frozenset([
     "javascript:",
@@ -26,6 +34,7 @@ REJECT_PATTERNS = frozenset([
     "behavior:",
     "-moz-binding",
     "image-set(",
+    "imageset(",
     "src(",
     "<",
     "&#",
@@ -59,24 +68,77 @@ def _normalize_value(v):
     normalized = html.unescape(normalized)
     normalized = _resolve_css_escapes(normalized)
     normalized = CSS_COMMENT.sub("", normalized)
-    normalized = "".join(c for c in normalized if unicodedata.category(c) not in ("Zs", "Zl", "Zp", "Cc", "Cn") and c not in "\t\n\r\x00")
+    normalized = "".join(
+        c for c in normalized
+        if unicodedata.category(c) not in ("Zs", "Zl", "Zp", "Cc", "Cn", "Cf")
+        and c not in "\t\n\r\x00"
+        and c not in INVISIBLE_CHARS
+    )
     normalized = normalized.casefold()
     return normalized
 
 
 def _validate_urls(normalized):
-    for match in URL_PATTERN.finditer(normalized):
-        url_arg = match.group(2).strip()
+    url_count = 0
+    pos = 0
+
+    while True:
+        pos = normalized.find("url(", pos)
+        if pos == -1:
+            break
+
+        url_count += 1
+        if url_count > 50:
+            return False
+
+        pos += 4
+        if pos >= len(normalized):
+            return False
+
+        quote_char = None
+        if pos < len(normalized) and normalized[pos] in ("'", '"'):
+            quote_char = normalized[pos]
+            pos += 1
+
+        arg_start = pos
+        found_close = False
+        paren_depth = 0
+
+        while pos < len(normalized):
+            if quote_char:
+                if normalized[pos] == quote_char:
+                    arg_end = pos
+                    pos += 1
+                    if pos < len(normalized) and normalized[pos] == ")":
+                        found_close = True
+                        pos += 1
+                    break
+                pos += 1
+            else:
+                if normalized[pos] == "(":
+                    paren_depth += 1
+                elif normalized[pos] == ")":
+                    if paren_depth == 0:
+                        arg_end = pos
+                        found_close = True
+                        pos += 1
+                        break
+                    paren_depth -= 1
+                pos += 1
+
+        if not found_close:
+            return False
+
+        url_arg = normalized[arg_start:arg_end]
         if not url_arg:
             return False
+
+        if VAR_PATTERN.match(url_arg):
+            continue
 
         is_data = url_arg.startswith("data:")
         is_https = url_arg.startswith("https://")
         is_local = url_arg.startswith(("/local/", "/hacsfiles/", "./", "../"))
-        is_var = VAR_PATTERN.match(url_arg)
-
-        if is_var:
-            continue
 
         if is_data:
             matched_prefix = False
@@ -93,9 +155,6 @@ def _validate_urls(normalized):
             pass
         else:
             return False
-
-    if "url(" in normalized and not URL_PATTERN.search(normalized):
-        return False
 
     return True
 
@@ -120,7 +179,7 @@ def sanitize_value(value, key=None):
     if not _validate_urls(normalized):
         return None
 
-    value_without_urls = URL_PATTERN.sub("", value)
+    value_without_urls = re.sub(r"url\([^)]*\)", "", value)
     raw_contains_special = any(c in value_without_urls for c in "{};")
     if raw_contains_special:
         key_lower = (key or "").lower() if key else ""
