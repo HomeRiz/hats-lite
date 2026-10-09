@@ -1,0 +1,10 @@
+DOMAIN = "hats_lite"
+STATIC_URL = "/hats_lite_static"
+PANEL_PATH = "hats-lite"
+PANEL_ELEMENT = "hats-lite-panel"
+MAX_THEME_BYTES = 1_048_576
+MAX_UPLOAD_BYTES = 8_388_608
+TRY_SECONDS = 30
+CONFIRM_SECONDS = 5
+REVERT_GRACE_SECONDS = 3
+UPLOAD_DIR_NAME = "hats_lite"

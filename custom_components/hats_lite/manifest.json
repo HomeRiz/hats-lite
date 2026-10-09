@@ -1,0 +1,13 @@
+{
+  "domain": "hats_lite",
+  "name": "HATS Lite",
+  "version": "0.1.0",
+  "documentation": "https://github.com/HomeRiz/hats-lite",
+  "issue_tracker": "https://github.com/HomeRiz/hats-lite/issues",
+  "codeowners": ["@HomeRiz"],
+  "config_flow": true,
+  "dependencies": ["frontend", "http", "panel_custom", "websocket_api"],
+  "after_dependencies": ["hacs"],
+  "iot_class": "local_push",
+  "requirements": []
+}
