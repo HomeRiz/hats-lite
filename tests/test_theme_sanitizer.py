@@ -84,3 +84,97 @@ def test_theme_to_yaml_round_trip():
     out = parse_themes(text)
     assert out["Mine"]["vars"]["primary-color"] == "#112233"
     assert out["Mine"]["modes"]["dark"]["card-background-color"] == "#000"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "\\6a avascript:alert(1)",
+        "url(\\6a avascript:alert(1))",
+        "@\\69mport 'x'",
+        "java/**/script:alert(1)",
+        "exp/**/ression(alert(1))",
+        "@im/**/port url(x)",
+        "java\tscript:1",
+        "java\nscript:1",
+        "java\x00script:1",
+        "ｊavascript:1",
+        "ｅxpression(1)",
+        "&#106;avascript:1",
+        "url( data : text/html,x)",
+        "url(data :text/html,x)",
+        "url(data:text/xml,<x/>)",
+        "url(data:application/xhtml+xml,x)",
+        "url(data:image/s\\76g+xml,x)",
+        "url(http://evil.test/x.png)",
+        "url(chrome://x)",
+        "image-set('https://evil/x' 1x)",
+        "src('https://evil/x')",
+        "behavior: url(x.htc)",
+        "url(",
+        "<img src=x onerror=1>",
+        "</style><img src=x>",
+    ],
+)
+def test_enhanced_rejected_values(bad):
+    assert sanitize_value(bad) is None
+
+
+def test_special_chars_rejected_for_non_card_mod_keys():
+    assert sanitize_value("red;} body{display:none} a{", key="background") is None
+    assert sanitize_value("x}@font-face{src:url(//e)}", key="a") is None
+
+
+def test_special_chars_accepted_for_card_mod_keys():
+    value = "ha-card { border: 1px solid red; } .x > div { color: red; }"
+    assert sanitize_value(value, key="card-mod-card") == value
+
+
+def test_special_chars_accepted_for_uix_keys():
+    value = "{ }"
+    assert sanitize_value(value, key="uix-card") == value
+
+
+@pytest.mark.parametrize(
+    "good",
+    [
+        "#ff0000",
+        "rgba(0, 0, 0, 0.5)",
+        "linear-gradient(140deg, #1b1030 0%, #0b0d14 100%)",
+        "center / cover no-repeat url('data:image/jpeg;base64,/9j/4AAQ')",
+        "url('/local/hats_lite/a.png')",
+        "url(https://example.test/wall.jpg)",
+        "var(--primary-color)",
+    ],
+)
+def test_enhanced_accepted_values(good):
+    assert sanitize_value(good) == good
+
+
+def test_deep_nesting_recursion_error():
+    deeply_nested = "a: " + "{a: " * 5000
+    with pytest.raises(ThemeError, match="too deeply nested"):
+        parse_themes(deeply_nested)
+
+
+def test_size_cap_is_bytes():
+    text_chars = "é" * 600000
+    yaml_text = f"a: {text_chars}\n"
+    with pytest.raises(ThemeError, match="too large"):
+        parse_themes(yaml_text)
+
+
+def test_names_with_trailing_newline_rejected():
+    with pytest.raises(ThemeError):
+        parse_themes('"T\n":\n  a: 1\n')
+
+
+def test_float_special_values_rejected():
+    assert sanitize_value(float("nan")) is None
+    assert sanitize_value(float("inf")) is None
+    assert sanitize_value(float("-inf")) is None
+
+
+def test_bool_rejected():
+    assert sanitize_value(True) is None
+    assert sanitize_value(False) is None
