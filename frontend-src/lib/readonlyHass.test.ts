@@ -279,4 +279,71 @@ describe("makeReadOnlyHass", () => {
     }).toThrow(TypeError);
     expect((hass as Record<string, unknown>).foo).toBeUndefined();
   });
+
+  it("allows only known read helpers", async () => {
+    const real = vi.fn();
+    const blockedNames = [
+      "ws", "execute", "turnOn", "toggle", "run", "invoke", "emit", "trigger",
+      "notify", "reload", "restart", "navigate", "getAndSend", "setTheme",
+      "removeEventListener",
+    ];
+    const hass: Record<string, unknown> = {
+      prefix: "p:",
+      localize(k: string) { return `${(this as { prefix: string }).prefix}${k}`; },
+      formatEntityState(k: string) { return `${(this as { prefix: string }).prefix}${k}`; },
+      loadBackendTranslation(k: string) { return `${(this as { prefix: string }).prefix}${k}`; },
+      hassUrl(k: string) { return `${(this as { prefix: string }).prefix}${k}`; },
+      getFoo(k: string) { return `${(this as { prefix: string }).prefix}${k}`; },
+      isReady(k: string) { return `${(this as { prefix: string }).prefix}${k}`; },
+    };
+    for (const n of blockedNames) hass[n] = real;
+    const ro = makeReadOnlyHass(hass) as Record<string, (...a: unknown[]) => unknown>;
+    for (const n of blockedNames) {
+      await expect(ro[n]()).resolves.toBeUndefined();
+    }
+    expect(real).not.toHaveBeenCalled();
+    expect(blockedCalls).toEqual(blockedNames);
+    for (const n of ["localize", "formatEntityState", "loadBackendTranslation", "hassUrl", "getFoo", "isReady"]) {
+      expect(ro[n]("a")).toBe("p:a");
+    }
+  });
+
+  it("makes Map, Set and Date read only", () => {
+    const map = new Map<string, { n: number }>([["a", { n: 1 }]]);
+    const set = new Set([1, 2]);
+    const date = new Date(1000);
+    const ro = makeReadOnlyHass({ box: { map, set, date } }) as unknown as {
+      box: { map: Map<string, { n: number }>; set: Set<number>; date: Date };
+    };
+    expect(ro.box.map.get("a")?.n).toBe(1);
+    expect(ro.box.map.has("a")).toBe(true);
+    expect(ro.box.map.size).toBe(1);
+    expect([...ro.box.map.keys()]).toEqual(["a"]);
+    expect([...ro.box.map]).toHaveLength(1);
+    ro.box.map.forEach((v) => expect(v.n).toBe(1));
+    expect(() => ro.box.map.set("b", { n: 2 })).toThrow(TypeError);
+    expect(() => ro.box.map.delete("a")).toThrow(TypeError);
+    expect(() => ro.box.map.clear()).toThrow(TypeError);
+    expect(map.size).toBe(1);
+    expect(ro.box.set.has(1)).toBe(true);
+    expect(ro.box.set.size).toBe(2);
+    expect([...ro.box.set.values()]).toEqual([1, 2]);
+    expect([...ro.box.set]).toEqual([1, 2]);
+    expect(() => ro.box.set.add(3)).toThrow(TypeError);
+    expect(() => ro.box.set.delete(1)).toThrow(TypeError);
+    expect(() => ro.box.set.clear()).toThrow(TypeError);
+    expect(set.size).toBe(2);
+    const copy = ro.box.date;
+    expect(copy.getTime()).toBe(1000);
+    copy.setTime(5);
+    expect(date.getTime()).toBe(1000);
+  });
+
+  it("exposes real values in property descriptors", () => {
+    const { ro } = build();
+    const d = Object.getOwnPropertyDescriptor(ro, "states");
+    expect(d?.value).toBe(ro.states);
+    expect(d?.writable).toBe(false);
+    expect(Object.getOwnPropertyDescriptor(ro, "auth")).toBeUndefined();
+  });
 });

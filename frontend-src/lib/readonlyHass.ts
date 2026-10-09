@@ -24,7 +24,46 @@ function hasLockedProp(value: object): boolean {
   );
 }
 
+function rejectWrite(): never {
+  throw new TypeError("Read-only");
+}
+
+function collectionView<C extends Map<unknown, unknown> | Set<unknown>>(
+  value: C,
+  blocked: string[],
+): C {
+  return new Proxy(value, {
+    get(target, prop) {
+      if (typeof prop === "string" && blocked.includes(prop)) return rejectWrite;
+      const member = Reflect.get(target, prop, target);
+      if (prop === "get" && typeof member === "function") {
+        return (key: unknown) =>
+          readOnlyView((member as (k: unknown) => unknown).call(target, key));
+      }
+      return typeof member === "function" ? member.bind(target) : member;
+    },
+    set: () => false,
+    defineProperty: () => false,
+    deleteProperty: () => false,
+  });
+}
+
 function readOnlyView<V>(value: V): V {
+  if (value instanceof Date) return new Date(value.getTime()) as V;
+  if (value instanceof Map) {
+    const cached = views.get(value);
+    if (cached) return cached as V;
+    const view = collectionView(value, ["set", "delete", "clear"]);
+    views.set(value, view);
+    return view as V;
+  }
+  if (value instanceof Set) {
+    const cached = views.get(value);
+    if (cached) return cached as V;
+    const view = collectionView(value, ["add", "delete", "clear"]);
+    views.set(value, view);
+    return view as V;
+  }
   if (!isPlain(value)) return value;
   const cached = views.get(value);
   if (cached) return cached as V;
@@ -73,7 +112,13 @@ function blockedType(snap: Snapshot | undefined): string {
 }
 
 const WRITE_NAME =
-  /^(send|subscribe|call|fetch|post|put|patch|delete|remove|create|add|save|set|update|fire|dispatch|write|publish)/i;
+  /(send|subscribe|call|fetch|post|put|patch|delete|remove|create|add|save|set|update|fire|dispatch|write|publish)/i;
+const READ_NAME =
+  /^(localize|format|load|hassUrl|get|is|has|to|resolve|translate)(?![a-z])/;
+
+function isReadHelper(name: string): boolean {
+  return READ_NAME.test(name) && !WRITE_NAME.test(name);
+}
 
 const connections = new WeakMap<object, object>();
 
@@ -128,7 +173,7 @@ function makeConnection(connection: unknown): object | undefined {
 
 export function makeReadOnlyHass<T extends object>(hass: T): T {
   const target = hass as Record<PropertyKey, unknown>;
-  return new Proxy({} as T, {
+  const proxy: T = new Proxy({} as T, {
     has(_dummy, prop) {
       return prop !== "auth" && Reflect.has(target, prop);
     },
@@ -137,7 +182,12 @@ export function makeReadOnlyHass<T extends object>(hass: T): T {
     },
     getOwnPropertyDescriptor(_dummy, prop) {
       if (prop === "auth" || !Reflect.has(target, prop)) return undefined;
-      return { value: undefined, enumerable: true, configurable: true, writable: false };
+      return {
+        value: Reflect.get(proxy, prop),
+        enumerable: true,
+        configurable: true,
+        writable: false,
+      };
     },
     get(_dummy, prop) {
       if (prop === "auth") return undefined;
@@ -180,13 +230,13 @@ export function makeReadOnlyHass<T extends object>(hass: T): T {
             return fn.call(target, path, copy);
           };
         default:
-          if (typeof prop === "string" && WRITE_NAME.test(prop)) {
-            return async () => {
-              blockedCalls.push(prop);
-              return undefined;
-            };
+          if (typeof prop === "string" && isReadHelper(prop)) {
+            return fn.bind(target);
           }
-          return fn.bind(target);
+          return async () => {
+            blockedCalls.push(String(prop));
+            return undefined;
+          };
       }
     },
     set() {
@@ -199,4 +249,5 @@ export function makeReadOnlyHass<T extends object>(hass: T): T {
       return false;
     },
   });
+  return proxy;
 }
