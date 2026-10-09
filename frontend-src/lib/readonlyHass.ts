@@ -18,11 +18,22 @@ function isPlain(value: unknown): value is object {
   return proto === Object.prototype || proto === null;
 }
 
+function hasLockedProp(value: object): boolean {
+  return Object.values(Object.getOwnPropertyDescriptors(value)).some(
+    (d) => d.configurable === false && d.writable === false,
+  );
+}
+
 function readOnlyView<V>(value: V): V {
   if (!isPlain(value)) return value;
   const cached = views.get(value);
   if (cached) return cached as V;
-  const view = new Proxy(value, {
+  const base = hasLockedProp(value)
+    ? Array.isArray(value)
+      ? [...value]
+      : { ...value }
+    : value;
+  const view = new Proxy(base, {
     get(target, prop, receiver) {
       return readOnlyView(Reflect.get(target, prop, receiver));
     },
@@ -40,17 +51,31 @@ function readOnlyView<V>(value: V): V {
     },
   });
   views.set(value, view);
-  return view;
+  return view as V;
 }
 
-function messageType(msg: unknown): string | undefined {
-  const type = (msg as { type?: unknown } | null | undefined)?.type;
-  return typeof type === "string" ? type : undefined;
+type Snapshot = { type: string; msg: Record<string, unknown> };
+
+function snapshotMessage(msg: unknown): Snapshot | undefined {
+  if (typeof msg !== "object" || msg === null) return undefined;
+  const copy = { ...(msg as object) } as Record<string, unknown>;
+  const type = copy.type;
+  if (typeof type !== "string") return undefined;
+  return { type, msg: copy };
 }
 
-function allowedType(type: string | undefined): type is string {
-  return type !== undefined && WS_ALLOWED.test(type);
+function allowedSnapshot(snap: Snapshot | undefined): snap is Snapshot {
+  return snap !== undefined && WS_ALLOWED.test(snap.type);
 }
+
+function blockedType(snap: Snapshot | undefined): string {
+  return `ws:${snap ? snap.type : "invalid"}`;
+}
+
+const WRITE_NAME =
+  /^(send|subscribe|call|fetch|post|put|patch|delete|remove|create|add|save|set|update|fire|dispatch|write|publish)/i;
+
+const connections = new WeakMap<object, object>();
 
 function snapshotMethod(method: unknown): string | null {
   if (method === undefined || method === null) return "GET";
@@ -64,10 +89,12 @@ function describeMethod(method: unknown): string {
 
 function makeConnection(connection: unknown): object | undefined {
   if (typeof connection !== "object" || connection === null) return undefined;
+  const cached = connections.get(connection);
+  if (cached) return cached;
   const target = connection as Record<string, unknown>;
   const call = (name: string, ...args: unknown[]) =>
     (target[name] as AnyFn).apply(target, args);
-  return {
+  const wrapped = {
     get connected() {
       return target.connected;
     },
@@ -75,33 +102,46 @@ function makeConnection(connection: unknown): object | undefined {
       return target.haVersion;
     },
     async sendMessagePromise(msg: unknown) {
-      const type = messageType(msg);
-      if (allowedType(type)) return call("sendMessagePromise", msg);
-      blockedCalls.push(`ws:${String(type)}`);
+      const snap = snapshotMessage(msg);
+      if (allowedSnapshot(snap)) return call("sendMessagePromise", snap.msg);
+      blockedCalls.push(blockedType(snap));
       return undefined;
     },
     sendMessage(msg: unknown, commandId?: unknown) {
-      const type = messageType(msg);
-      if (allowedType(type)) return call("sendMessage", msg, commandId);
-      blockedCalls.push(`ws:${String(type)}`);
+      const snap = snapshotMessage(msg);
+      if (allowedSnapshot(snap)) return call("sendMessage", snap.msg, commandId);
+      blockedCalls.push(blockedType(snap));
       return undefined;
     },
     async subscribeMessage(callback: unknown, msg: unknown, options?: unknown) {
-      const type = messageType(msg);
-      if (allowedType(type)) {
-        return call("subscribeMessage", callback, msg, options);
+      const snap = snapshotMessage(msg);
+      if (allowedSnapshot(snap)) {
+        return call("subscribeMessage", callback, snap.msg, options);
       }
-      blockedCalls.push(`ws:${String(type)}`);
+      blockedCalls.push(blockedType(snap));
       return () => undefined;
     },
   };
+  connections.set(connection, wrapped);
+  return wrapped;
 }
 
 export function makeReadOnlyHass<T extends object>(hass: T): T {
-  return new Proxy(hass, {
-    get(target, prop, receiver) {
+  const target = hass as Record<PropertyKey, unknown>;
+  return new Proxy({} as T, {
+    has(_dummy, prop) {
+      return prop !== "auth" && Reflect.has(target, prop);
+    },
+    ownKeys() {
+      return Reflect.ownKeys(target).filter((k) => k !== "auth");
+    },
+    getOwnPropertyDescriptor(_dummy, prop) {
+      if (prop === "auth" || !Reflect.has(target, prop)) return undefined;
+      return { value: undefined, enumerable: true, configurable: true, writable: false };
+    },
+    get(_dummy, prop) {
       if (prop === "auth") return undefined;
-      const value = Reflect.get(target, prop, receiver);
+      const value = Reflect.get(target, prop, target);
       if (prop === "connection") return makeConnection(value);
       if (typeof value !== "function") return readOnlyView(value);
       const fn = value as AnyFn;
@@ -113,9 +153,9 @@ export function makeReadOnlyHass<T extends object>(hass: T): T {
           };
         case "callWS":
           return async (msg: unknown) => {
-            const type = messageType(msg);
-            if (allowedType(type)) return fn.call(target, msg);
-            blockedCalls.push(`ws:${String(type)}`);
+            const snap = snapshotMessage(msg);
+            if (allowedSnapshot(snap)) return fn.call(target, snap.msg);
+            blockedCalls.push(blockedType(snap));
             return undefined;
           };
         case "callApi":
@@ -140,11 +180,23 @@ export function makeReadOnlyHass<T extends object>(hass: T): T {
             return fn.call(target, path, copy);
           };
         default:
+          if (typeof prop === "string" && WRITE_NAME.test(prop)) {
+            return async () => {
+              blockedCalls.push(prop);
+              return undefined;
+            };
+          }
           return fn.bind(target);
       }
     },
     set() {
-      return true;
+      return false;
+    },
+    defineProperty() {
+      return false;
+    },
+    deleteProperty() {
+      return false;
     },
   });
 }

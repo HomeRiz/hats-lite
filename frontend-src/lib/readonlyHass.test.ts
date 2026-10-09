@@ -178,4 +178,105 @@ describe("makeReadOnlyHass", () => {
     expect(hass.states).toEqual({ "light.a": { state: "on" } });
     expect(states["light.a"].state).toBe("on");
   });
+
+  it("snapshots message types on every path", async () => {
+    const getter = () => {
+      let n = 0;
+      return {
+        get type() {
+          n += 1;
+          return n === 1 ? "get_states" : "call_service";
+        },
+        extra: 1,
+      };
+    };
+    const seen: string[] = [];
+    const record = (m: { type: string }) => {
+      seen.push(m.type);
+      return "ok";
+    };
+    const ro = makeReadOnlyHass({
+      callWS: vi.fn(async (m: { type: string }) => record(m)),
+      connection: {
+        sendMessagePromise: vi.fn(async (m: { type: string }) => record(m)),
+        sendMessage: vi.fn((m: { type: string }) => record(m)),
+        subscribeMessage: vi.fn(async (_cb: unknown, m: { type: string }) => record(m)),
+      },
+    });
+    const c = ro.connection as unknown as Record<string, (...a: unknown[]) => unknown>;
+    await ro.callWS(getter());
+    await c.sendMessagePromise(getter());
+    c.sendMessage(getter());
+    await c.subscribeMessage(() => undefined, getter());
+    expect(seen).toEqual(["get_states", "get_states", "get_states", "get_states"]);
+    expect(blockedCalls).toEqual([]);
+
+    const bad = () => {
+      let n = 0;
+      return {
+        get type() {
+          n += 1;
+          return n === 1 ? "call_service" : "get_states";
+        },
+      };
+    };
+    await ro.callWS(bad());
+    await c.sendMessagePromise(bad());
+    c.sendMessage(bad());
+    await c.subscribeMessage(() => undefined, bad());
+    expect(seen).toHaveLength(4);
+    expect(blockedCalls).toEqual(Array(4).fill("ws:call_service"));
+  });
+
+  it("blocks write-like helpers and keeps read helpers bound", async () => {
+    const real = vi.fn();
+    const hass = {
+      prefix: "x:",
+      sendWS: real,
+      sendMessage: real,
+      subscribeMessage: real,
+      setTheme: real,
+      localize(key: string) {
+        return `${this.prefix}${key}`;
+      },
+      formatEntityState(s: string) {
+        return `${this.prefix}${s}`;
+      },
+    };
+    const ro = makeReadOnlyHass(hass);
+    await expect(ro.sendWS()).resolves.toBeUndefined();
+    await expect(ro.sendMessage()).resolves.toBeUndefined();
+    await expect(ro.subscribeMessage()).resolves.toBeUndefined();
+    await expect(ro.setTheme()).resolves.toBeUndefined();
+    expect(real).not.toHaveBeenCalled();
+    expect(blockedCalls).toEqual(["sendWS", "sendMessage", "subscribeMessage", "setTheme"]);
+    expect(ro.localize("a")).toBe("x:a");
+    expect(ro.formatEntityState("b")).toBe("x:b");
+  });
+
+  it("reads frozen nested objects", () => {
+    const frozen = { themes: Object.freeze({ a: Object.freeze({ b: 1 }) }) };
+    const ro = makeReadOnlyHass(frozen) as unknown as { themes: { a: { b: number } } };
+    expect(ro.themes.a.b).toBe(1);
+    const mixed = { themes: Object.freeze({ a: { b: 2 } }) };
+    const rm = makeReadOnlyHass(mixed) as unknown as { themes: { a: { b: number } } };
+    expect(rm.themes.a.b).toBe(2);
+    expect(() => {
+      rm.themes.a.b = 3;
+    }).toThrow(TypeError);
+    expect(mixed.themes.a.b).toBe(2);
+  });
+
+  it("returns the same connection each time", () => {
+    const ro = makeReadOnlyHass({ connection: { connected: true } });
+    expect(ro.connection).toBe(ro.connection);
+  });
+
+  it("throws on top level writes", () => {
+    const { hass, ro } = build();
+    expect(() => {
+      (ro as unknown as { foo: number }).foo = 1;
+    }).toThrow(TypeError);
+    expect((hass as Record<string, unknown>).foo).toBeUndefined();
+  });
 });
