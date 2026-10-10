@@ -1,3 +1,5 @@
+import { readOnlyView } from "./viewTarget";
+
 export const blockedCalls: string[] = [];
 
 export function clearBlocked(): void {
@@ -8,90 +10,6 @@ const WS_ALLOWED =
   /^(get_|lovelace\/config$|lovelace\/resources$|frontend\/get_|config\/[a-z_]+\/list$|auth\/current_user$|render_template$)/;
 
 type AnyFn = (...args: unknown[]) => unknown;
-
-const views = new WeakMap<object, object>();
-
-function isPlain(value: unknown): value is object {
-  if (typeof value !== "object" || value === null) return false;
-  if (Array.isArray(value)) return true;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
-function hasLockedProp(value: object): boolean {
-  return Object.values(Object.getOwnPropertyDescriptors(value)).some(
-    (d) => d.configurable === false && d.writable === false,
-  );
-}
-
-function rejectWrite(): never {
-  throw new TypeError("Read-only");
-}
-
-function collectionView<C extends Map<unknown, unknown> | Set<unknown>>(
-  value: C,
-  blocked: string[],
-): C {
-  return new Proxy(value, {
-    get(target, prop) {
-      if (typeof prop === "string" && blocked.includes(prop)) return rejectWrite;
-      const member = Reflect.get(target, prop, target);
-      if (prop === "get" && typeof member === "function") {
-        return (key: unknown) =>
-          readOnlyView((member as (k: unknown) => unknown).call(target, key));
-      }
-      return typeof member === "function" ? member.bind(target) : member;
-    },
-    set: () => false,
-    defineProperty: () => false,
-    deleteProperty: () => false,
-  });
-}
-
-function readOnlyView<V>(value: V): V {
-  if (value instanceof Date) return new Date(value.getTime()) as V;
-  if (value instanceof Map) {
-    const cached = views.get(value);
-    if (cached) return cached as V;
-    const view = collectionView(value, ["set", "delete", "clear"]);
-    views.set(value, view);
-    return view as V;
-  }
-  if (value instanceof Set) {
-    const cached = views.get(value);
-    if (cached) return cached as V;
-    const view = collectionView(value, ["add", "delete", "clear"]);
-    views.set(value, view);
-    return view as V;
-  }
-  if (!isPlain(value)) return value;
-  const cached = views.get(value);
-  if (cached) return cached as V;
-  const base = hasLockedProp(value)
-    ? Array.isArray(value)
-      ? [...value]
-      : { ...value }
-    : value;
-  const view = new Proxy(base, {
-    get(target, prop, receiver) {
-      return readOnlyView(Reflect.get(target, prop, receiver));
-    },
-    set() {
-      return false;
-    },
-    defineProperty() {
-      return false;
-    },
-    deleteProperty() {
-      return false;
-    },
-    setPrototypeOf() {
-      return false;
-    },
-  });
-  views.set(value, view);
-  return view as V;
-}
 
 type Snapshot = { type: string; msg: Record<string, unknown> };
 
@@ -111,13 +29,33 @@ function blockedType(snap: Snapshot | undefined): string {
   return `ws:${snap ? snap.type : "invalid"}`;
 }
 
-const WRITE_NAME =
-  /(send|subscribe|call|fetch|post|put|patch|delete|remove|create|add|save|set|update|fire|dispatch|write|publish)/i;
-const READ_NAME =
-  /^(localize|format|load|hassUrl|get|is|has|to|resolve|translate)(?![a-z])/;
+const READ_HELPERS = new Set<PropertyKey>([
+  "localize",
+  "formatEntityState",
+  "formatEntityAttributeName",
+  "formatEntityAttributeValue",
+  "formatEntityName",
+  "loadBackendTranslation",
+  "loadFragmentTranslation",
+  "hassUrl",
+]);
 
-function isReadHelper(name: string): boolean {
-  return READ_NAME.test(name) && !WRITE_NAME.test(name);
+const PATH_BLOCKED = /\\|\.\.|[\u0000- \u007f]|%(2e|5c)/i;
+
+const PATH_ONLY_BLOCKED = /@|%2f/i;
+
+const SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/;
+
+function isSafePath(path: unknown, allowRelative = false): path is string {
+  if (typeof path !== "string" || path === "") return false;
+  if (PATH_BLOCKED.test(path) || path.startsWith("//")) return false;
+  if (PATH_ONLY_BLOCKED.test(path.split(/[?#]/, 1)[0])) return false;
+  if (path.startsWith("/")) return true;
+  return allowRelative && !SCHEME.test(path);
+}
+
+function pathLabel(path: unknown): string {
+  return typeof path === "string" ? path : "invalid";
 }
 
 const connections = new WeakMap<object, object>();
@@ -167,8 +105,9 @@ function makeConnection(connection: unknown): object | undefined {
       return () => undefined;
     },
   };
-  connections.set(connection, wrapped);
-  return wrapped;
+  const frozen = Object.freeze(wrapped);
+  connections.set(connection, frozen);
+  return frozen;
 }
 
 export function makeReadOnlyHass<T extends object>(hass: T): T {
@@ -209,15 +148,23 @@ export function makeReadOnlyHass<T extends object>(hass: T): T {
             return undefined;
           };
         case "callApi":
-          return async (method: unknown, ...rest: unknown[]) => {
+          return async (method: unknown, path: unknown, ...rest: unknown[]) => {
             if (typeof method === "string" && snapshotMethod(method)) {
-              return fn.call(target, method, ...rest);
+              if (!isSafePath(path, true)) {
+                blockedCalls.push(`api-path:${pathLabel(path)}`);
+                return undefined;
+              }
+              return fn.call(target, method, path, ...rest);
             }
             blockedCalls.push(`api:${describeMethod(method)}`);
             return undefined;
           };
         case "fetchWithAuth":
           return async (path: unknown, init?: unknown) => {
+            if (!isSafePath(path)) {
+              blockedCalls.push(`fetch-path:${pathLabel(path)}`);
+              return undefined;
+            }
             if (init === undefined || init === null) {
               return fn.call(target, path, init);
             }
@@ -230,7 +177,7 @@ export function makeReadOnlyHass<T extends object>(hass: T): T {
             return fn.call(target, path, copy);
           };
         default:
-          if (typeof prop === "string" && isReadHelper(prop)) {
+          if (READ_HELPERS.has(prop)) {
             return fn.bind(target);
           }
           return async () => {
@@ -246,6 +193,12 @@ export function makeReadOnlyHass<T extends object>(hass: T): T {
       return false;
     },
     deleteProperty() {
+      return false;
+    },
+    setPrototypeOf() {
+      return false;
+    },
+    preventExtensions() {
       return false;
     },
   });

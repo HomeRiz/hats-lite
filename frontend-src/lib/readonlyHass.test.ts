@@ -65,13 +65,14 @@ describe("makeReadOnlyHass", () => {
 
   it("lets GET through callApi and blocks writes", async () => {
     const { hass, ro } = build();
-    await expect(ro.callApi("GET", "states")).resolves.toBe("GET:states");
-    await expect(ro.callApi("get", "states")).resolves.toBe("get:states");
+    await expect(ro.callApi("GET", "/states")).resolves.toBe("GET:/states");
+    await expect(ro.callApi("get", "/states")).resolves.toBe("get:/states");
     for (const m of ["POST", "PUT", "DELETE", "PATCH"]) {
       await expect(ro.callApi(m, "x")).resolves.toBeUndefined();
     }
     expect(hass.callApi).toHaveBeenCalledTimes(2);
     expect(blockedCalls).toHaveLength(4);
+    expect(blockedCalls.every((c) => c.startsWith("api:"))).toBe(true);
   });
 
   it("lets GET through fetchWithAuth and blocks writes", async () => {
@@ -282,10 +283,15 @@ describe("makeReadOnlyHass", () => {
 
   it("allows only known read helpers", async () => {
     const real = vi.fn();
+    const readNames = [
+      "localize", "formatEntityState", "formatEntityAttributeName", "formatEntityAttributeValue",
+      "formatEntityName", "loadBackendTranslation", "loadFragmentTranslation", "hassUrl",
+    ];
     const blockedNames = [
       "ws", "execute", "turnOn", "toggle", "run", "invoke", "emit", "trigger",
       "notify", "reload", "restart", "navigate", "getAndSend", "setTheme",
-      "removeEventListener",
+      "removeEventListener", "getFoo", "isReady", "getAndToggle", "loadAndRestart",
+      "hasPressedReload", "toNavigate", "isComputing",
     ];
     const hass: Record<string, unknown> = {
       prefix: "p:",
@@ -293,9 +299,8 @@ describe("makeReadOnlyHass", () => {
       formatEntityState(k: string) { return `${(this as { prefix: string }).prefix}${k}`; },
       loadBackendTranslation(k: string) { return `${(this as { prefix: string }).prefix}${k}`; },
       hassUrl(k: string) { return `${(this as { prefix: string }).prefix}${k}`; },
-      getFoo(k: string) { return `${(this as { prefix: string }).prefix}${k}`; },
-      isReady(k: string) { return `${(this as { prefix: string }).prefix}${k}`; },
     };
+    for (const n of readNames) if (!(n in hass)) hass[n] = function (this: { prefix: string }, k: string) { return `${this.prefix}${k}`; };
     for (const n of blockedNames) hass[n] = real;
     const ro = makeReadOnlyHass(hass) as Record<string, (...a: unknown[]) => unknown>;
     for (const n of blockedNames) {
@@ -303,9 +308,26 @@ describe("makeReadOnlyHass", () => {
     }
     expect(real).not.toHaveBeenCalled();
     expect(blockedCalls).toEqual(blockedNames);
-    for (const n of ["localize", "formatEntityState", "loadBackendTranslation", "hassUrl", "getFoo", "isReady"]) {
+    for (const n of readNames) {
       expect(ro[n]("a")).toBe("p:a");
     }
+  });
+
+  it("stubs getAndToggle, loadAndRestart, hasPressedReload, toNavigate and isComputing", async () => {
+    const real = vi.fn(() => "real");
+    const hass = {
+      getAndToggle: real,
+      loadAndRestart: real,
+      hasPressedReload: real,
+      toNavigate: real,
+      isComputing: real,
+    };
+    const ro = makeReadOnlyHass(hass) as unknown as Record<string, () => Promise<unknown>>;
+    for (const n of Object.keys(hass)) {
+      await expect(ro[n]()).resolves.toBeUndefined();
+    }
+    expect(real).not.toHaveBeenCalled();
+    expect(blockedCalls).toEqual(Object.keys(hass));
   });
 
   it("makes Map, Set and Date read only", () => {

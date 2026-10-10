@@ -1,15 +1,43 @@
+export const HOST_STYLES: Array<[string, string]> = [
+  ["all", "initial"],
+  ["display", "flex"],
+  ["justify-content", "center"],
+  ["position", "fixed"],
+  ["left", "0"],
+  ["right", "0"],
+  ["bottom", "24px"],
+  ["top", "auto"],
+  ["width", "fit-content"],
+  ["height", "auto"],
+  ["margin", "0 auto"],
+  ["padding", "0"],
+  ["z-index", "2147483647"],
+  ["visibility", "visible"],
+  ["opacity", "1"],
+  ["transform", "none"],
+  ["translate", "none"],
+  ["scale", "none"],
+  ["rotate", "none"],
+  ["zoom", "1"],
+  ["filter", "none"],
+  ["clip-path", "none"],
+  ["clip", "auto"],
+  ["mask", "none"],
+  ["mix-blend-mode", "normal"],
+  ["isolation", "isolate"],
+  ["content-visibility", "visible"],
+  ["pointer-events", "auto"],
+  ["max-width", "none"],
+  ["max-height", "none"],
+  ["overflow", "visible"],
+  ["contain", "none"],
+];
+
+const HOST_RULES = HOST_STYLES.map(([prop, value]) => `${prop}: ${value} !important;`).join(" ");
+
 const STYLES = `
-:host {
-  all: initial;
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 24px;
-  z-index: 2147483647;
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-}
+:host { ${HOST_RULES} }
+:host::before, :host::after { content: none !important; display: none !important; }
 .box {
   pointer-events: auto;
   box-sizing: border-box;
@@ -23,6 +51,15 @@ const STYLES = `
   font-size: 20px;
   line-height: 1.4;
   text-align: center;
+  text-indent: 0;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-shadow: none;
+  -webkit-text-fill-color: currentcolor;
+  text-transform: none;
+  white-space: normal;
+  writing-mode: horizontal-tb;
+  direction: ltr;
 }
 .title {
   margin: 0 0 4px;
@@ -50,6 +87,15 @@ button {
   font-size: 20px;
   font-weight: bold;
   cursor: pointer;
+  text-indent: 0;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-shadow: none;
+  -webkit-text-fill-color: currentcolor;
+  text-transform: none;
+  white-space: normal;
+  writing-mode: horizontal-tb;
+  direction: ltr;
 }
 button.keep {
   background: #ffffff;
@@ -65,29 +111,7 @@ button:focus-visible {
 }
 `;
 
-const HOST_STYLES: Array<[string, string]> = [
-  ["display", "block"],
-  ["position", "fixed"],
-  ["left", "0"],
-  ["right", "0"],
-  ["bottom", "0"],
-  ["top", "auto"],
-  ["width", "auto"],
-  ["height", "auto"],
-  ["margin", "0"],
-  ["padding", "0"],
-  ["z-index", "2147483647"],
-  ["visibility", "visible"],
-  ["opacity", "1"],
-  ["transform", "none"],
-  ["filter", "none"],
-  ["clip-path", "none"],
-  ["pointer-events", "auto"],
-  ["max-width", "none"],
-  ["contain", "none"],
-];
-
-const HOST_ATTRIBUTES = ["style", "hidden", "class", "popover"];
+const HOST_ATTRIBUTES = ["style", "hidden", "class", "popover", "inert"];
 
 type PopoverHost = HTMLElement & { showPopover?: () => void; hidePopover?: () => void };
 
@@ -95,26 +119,38 @@ export interface OverlayOptions {
   mount(el: HTMLElement): void;
   onKeep(): void;
   onRevert(): void;
+  trustedOnly?: boolean;
+}
+
+function isInvalidState(err: unknown): boolean {
+  return typeof err === "object" && err !== null && (err as { name?: unknown }).name === "InvalidStateError";
 }
 
 export function createOverlay(options: OverlayOptions) {
+  const trustedOnly = options.trustedOnly ?? true;
   let host: PopoverHost | null = null;
+  let root: ShadowRoot | null = null;
   let countdown: HTMLElement | null = null;
   let keepButton: HTMLButtonElement | null = null;
   let hostObserver: MutationObserver | null = null;
   let rootObserver: MutationObserver | null = null;
   let visible = false;
+  let popoverShown = false;
+
+  function fromUser(event: Event, action: () => void): void {
+    if (trustedOnly && !event.isTrusted) return;
+    action();
+  }
 
   function build(): PopoverHost {
     const el: PopoverHost = document.createElement("div");
     el.setAttribute("data-hats-lite-confirm", "");
-    const root = el.attachShadow({ mode: "open" });
+    root = el.attachShadow({ mode: "closed" });
     const style = document.createElement("style");
     style.textContent = STYLES;
     const box = document.createElement("div");
     box.className = "box";
     box.setAttribute("role", "alertdialog");
-    box.setAttribute("aria-live", "assertive");
     box.setAttribute("aria-label", "Keep this theme?");
     const title = document.createElement("p");
     title.className = "title";
@@ -122,18 +158,20 @@ export function createOverlay(options: OverlayOptions) {
     const status = document.createElement("p");
     status.className = "countdown";
     status.setAttribute("data-role", "countdown");
+    status.setAttribute("aria-live", "polite");
+    status.setAttribute("aria-atomic", "true");
     const actions = document.createElement("div");
     actions.className = "actions";
     const keep = document.createElement("button");
     keep.type = "button";
     keep.className = "keep";
     keep.textContent = "Keep";
-    keep.addEventListener("click", () => options.onKeep());
+    keep.addEventListener("click", (event) => fromUser(event, () => options.onKeep()));
     const revert = document.createElement("button");
     revert.type = "button";
     revert.className = "revert";
     revert.textContent = "Revert";
-    revert.addEventListener("click", () => options.onRevert());
+    revert.addEventListener("click", (event) => fromUser(event, () => options.onRevert()));
     actions.append(keep, revert);
     box.append(title, status, actions);
     root.append(style, box);
@@ -142,18 +180,28 @@ export function createOverlay(options: OverlayOptions) {
     return el;
   }
 
+  function isPopoverOpen(el: PopoverHost): boolean {
+    try {
+      return el.matches(":popover-open");
+    } catch {
+      return popoverShown;
+    }
+  }
+
   function applyHostState(): void {
     if (!host) return;
     host.removeAttribute("hidden");
     host.removeAttribute("class");
+    host.removeAttribute("inert");
     for (const [prop, value] of HOST_STYLES) host.style.setProperty(prop, value, "important");
-    if (typeof host.showPopover === "function") {
-      host.setAttribute("popover", "manual");
-      try {
-        host.showPopover();
-      } catch {
-        host.removeAttribute("popover");
-      }
+    if (typeof host.showPopover !== "function") return;
+    host.setAttribute("popover", "manual");
+    if (isPopoverOpen(host)) return;
+    try {
+      host.showPopover();
+      popoverShown = true;
+    } catch (err) {
+      if (!isInvalidState(err)) host.removeAttribute("popover");
     }
   }
 
@@ -212,9 +260,14 @@ export function createOverlay(options: OverlayOptions) {
       } catch {
         host.removeAttribute("popover");
       }
+      popoverShown = false;
       host.remove();
     }
   }
 
-  return { show, hide };
+  function shadowRoot(): ShadowRoot | null {
+    return root;
+  }
+
+  return { show, hide, shadowRoot };
 }

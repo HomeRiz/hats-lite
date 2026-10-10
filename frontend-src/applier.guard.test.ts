@@ -36,10 +36,11 @@ describe("overlay host protection", () => {
     const { host } = await showing();
     expect(host.parentNode).toBe(document.documentElement);
     for (const [prop, value] of [
-      ["display", "block"],
+      ["display", "flex"],
+      ["justify-content", "center"],
       ["position", "fixed"],
       ["z-index", "2147483647"],
-      ["bottom", "0px"],
+      ["bottom", "24px"],
     ]) {
       expect(host.style.getPropertyValue(prop)).toBe(value);
       expect(host.style.getPropertyPriority(prop)).toBe("important");
@@ -66,7 +67,7 @@ describe("overlay host protection", () => {
     const { host } = await showing();
     host.style.setProperty("display", "none", "important");
     await advance(0);
-    expect(host.style.getPropertyValue("display")).toBe("block");
+    expect(host.style.getPropertyValue("display")).toBe("flex");
   });
 
   it("reverts the hidden attribute", async () => {

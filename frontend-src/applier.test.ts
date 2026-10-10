@@ -142,7 +142,10 @@ describe("createApplier confirmation", () => {
     const root = shadow();
     const dialog = root.querySelector("[role=alertdialog]");
     expect(dialog).not.toBeNull();
-    expect(dialog?.getAttribute("aria-live")).toBe("assertive");
+    expect(dialog?.hasAttribute("aria-live")).toBe(false);
+    const live = root.querySelector("[data-role=countdown]");
+    expect(live?.getAttribute("aria-live")).toBe("polite");
+    expect(live?.getAttribute("aria-atomic")).toBe("true");
     expect(root.textContent).toContain("Keep this theme?");
     expect(button("Keep")).toBeTruthy();
     expect(button("Revert")).toBeTruthy();
@@ -161,8 +164,9 @@ describe("createApplier confirmation", () => {
     await advance(34_000);
     expect(env.fire).not.toHaveBeenCalled();
     await advance(1000);
-    expect(env.events.slice(-2)).toEqual([
+    expect(env.events.slice(-3)).toEqual([
       "hats_lite/trial_cancel",
+      "hats_lite/outcome_ack",
       `fire:settheme:${JSON.stringify(PREVIOUS)}`,
     ]);
     expect(overlay()).toBeNull();
@@ -187,8 +191,9 @@ describe("createApplier confirmation", () => {
     await advance(32_000);
     button("Revert").click();
     await advance(0);
-    expect(env.events.slice(-2)).toEqual([
+    expect(env.events.slice(-3)).toEqual([
       "hats_lite/trial_cancel",
+      "hats_lite/outcome_ack",
       `fire:settheme:${JSON.stringify(PREVIOUS)}`,
     ]);
     expect(overlay()).toBeNull();
@@ -208,20 +213,20 @@ describe("createApplier confirmation", () => {
     expect(env.count("hats_lite/trial_cancel")).toBe(1);
   });
 
-  it("hides the overlay and asks for the state again when accept is too late", async () => {
+  it("reverts through cancel then settheme when accept is too late", async () => {
     const env = await confirming();
     await advance(34_000);
     env.handlers["hats_lite/trial_accept"] = () => Object.assign(new Error("late"), { code: "too_late" });
-    env.handlers["hats_lite/trial_state"] = trialStateAt(36);
-    const before = env.count("hats_lite/trial_state");
     button("Keep").click();
     await advance(0);
     expect(overlay()).toBeNull();
-    expect(env.count("hats_lite/trial_state")).toBe(before + 1);
-    expect(env.fire).not.toHaveBeenCalled();
-    expect(env.count("hats_lite/trial_cancel")).toBe(0);
-    env.emit({ type: "revert", selection: PREVIOUS });
-    expect(env.fire).toHaveBeenCalledWith("settheme", PREVIOUS);
+    expect(env.events.slice(-3)).toEqual([
+      "hats_lite/trial_cancel",
+      "hats_lite/outcome_ack",
+      `fire:settheme:${JSON.stringify(PREVIOUS)}`,
+    ]);
+    await advance(10_000);
+    expect(env.count("hats_lite/trial_cancel")).toBe(1);
   });
 
   it("settles quietly when accept finds no trial", async () => {
@@ -233,6 +238,7 @@ describe("createApplier confirmation", () => {
     await advance(5000);
     expect(overlay()).toBeNull();
     expect(env.fire).not.toHaveBeenCalled();
+    expect(env.count("hats_lite/trial_cancel")).toBe(0);
   });
 
   it("does not fire settheme when cancel finds no trial", async () => {

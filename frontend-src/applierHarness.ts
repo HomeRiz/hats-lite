@@ -1,6 +1,8 @@
 import { vi } from "vitest";
 import { createApplier } from "./applier";
 import type { Selection, TrialInfo } from "./lib/types";
+import { PENDING_KEY } from "./pendingTrial";
+import { HANDLED_KEY } from "./handledOutcome";
 
 export const PREVIOUS: Selection = { theme: "Old" };
 export const CANDIDATE: Selection = { theme: "New", dark: true };
@@ -22,14 +24,32 @@ export type Handler = (msg: Record<string, unknown>) => unknown;
 
 const created: Array<{ dispose(): void }> = [];
 
+function clearStorage(): void {
+  try {
+    window.localStorage.removeItem(PENDING_KEY);
+    window.localStorage.removeItem(HANDLED_KEY);
+  } catch {
+    return;
+  }
+}
+
 export function resetDom(): void {
   created.splice(0).forEach((a) => a.dispose());
+  clearStorage();
   document.documentElement
     .querySelectorAll("[data-hats-lite-confirm]")
     .forEach((el) => el.remove());
 }
 
-export function setup(options: { hassReady?: boolean } = {}) {
+let active: { overlayRoot(): ShadowRoot | null } | null = null;
+
+export function setup(
+  options: {
+    hassReady?: boolean;
+    trustedOnly?: boolean;
+    selectedTheme?: { theme?: string; dark?: boolean } | null;
+  } = {},
+) {
   const hassReady = options.hassReady ?? true;
   const calls: Record<string, unknown>[] = [];
   const events: string[] = [];
@@ -38,6 +58,7 @@ export function setup(options: { hassReady?: boolean } = {}) {
     "hats_lite/trial_accept": () => ({ accepted: true }),
     "hats_lite/trial_cancel": () => ({ revert: PREVIOUS }),
     "hats_lite/trial_start": () => ({ trial: trialAt(SERVER_START) }),
+    "hats_lite/outcome_ack": () => ({ cleared: true }),
   };
   const control: { subscribeError: Error | null } = { subscribeError: null };
   let eventCb: ((event: unknown) => void) | null = null;
@@ -58,6 +79,7 @@ export function setup(options: { hassReady?: boolean } = {}) {
         return unsub;
       }),
     },
+    selectedTheme: options.selectedTheme,
   };
   const fire = vi.fn((name: string, detail: object) => {
     events.push(`fire:${name}:${JSON.stringify(detail)}`);
@@ -74,8 +96,10 @@ export function setup(options: { hassReady?: boolean } = {}) {
     mount,
     setTimer,
     clearTimer,
+    trustedOnly: options.trustedOnly ?? false,
   });
   created.push(applier);
+  active = applier;
   return {
     applier,
     hass,
@@ -102,9 +126,9 @@ export function overlay(): HTMLElement | null {
 }
 
 export function shadow(): ShadowRoot {
-  const host = overlay();
-  if (!host || !host.shadowRoot) throw new Error("overlay missing");
-  return host.shadowRoot;
+  const root = active?.overlayRoot() ?? null;
+  if (!root) throw new Error("overlay missing");
+  return root;
 }
 
 export function button(label: string): HTMLButtonElement {
