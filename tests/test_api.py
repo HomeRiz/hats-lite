@@ -11,7 +11,8 @@ from pytest_homeassistant_custom_component.common import (
     async_mock_service,
 )
 
-from custom_components.hats_lite import api
+from custom_components.hats_lite import api, theme_api
+from custom_components.hats_lite.theme_cache import THEME_CACHE
 from custom_components.hats_lite.catalog import CatalogError
 from custom_components.hats_lite.const import DOMAIN
 from custom_components.hats_lite.theme_fetch import ThemeFetchError
@@ -24,6 +25,13 @@ def clock(monkeypatch):
     state = {"t": 1000.0}
     monkeypatch.setattr(api, "_now", lambda: state["t"])
     return state
+
+
+@pytest.fixture(autouse=True)
+def fresh_theme_cache():
+    THEME_CACHE.clear()
+    yield
+    THEME_CACHE.clear()
 
 
 @pytest.fixture
@@ -60,21 +68,23 @@ async def test_catalog_unavailable(hass, setup, hass_ws_client):
 
 async def test_theme_returns_parsed_themes(hass, setup, hass_ws_client):
     client = await hass_ws_client(hass)
-    with patch.object(api, "fetch_theme_yaml", AsyncMock(return_value=THEME_YAML)) as fetch:
+    with patch.object(theme_api, "fetch_theme_yaml", AsyncMock(return_value=THEME_YAML)) as fetch:
         msg = await _call(client, 1, "theme", full_name="a/b", commit="abcd1234", path="t.yaml")
     assert msg["success"] is True
     assert msg["result"] == {
-        "themes": {"Sunset": {"vars": {"primary-color": "#ff8800"}, "modes": {"dark": {"primary-color": "#aa5500"}}}}
+        "themes": {"Sunset": {"vars": {"primary-color": "#ff8800"}, "modes": {"dark": {"primary-color": "#aa5500"}}}},
+        "names": ["Sunset"],
     }
     assert fetch.await_args.args[1:] == ("a/b", "abcd1234", "t.yaml")
 
 
 async def test_theme_fetch_failure_and_invalid_theme(hass, setup, hass_ws_client):
     client = await hass_ws_client(hass)
-    with patch.object(api, "fetch_theme_yaml", AsyncMock(side_effect=ThemeFetchError("no"))):
+    with patch.object(theme_api, "fetch_theme_yaml", AsyncMock(side_effect=ThemeFetchError("no"))):
         msg = await _call(client, 1, "theme", full_name="a/b", commit="abcd1234")
     assert msg["error"]["code"] == "fetch_failed"
-    with patch.object(api, "fetch_theme_yaml", AsyncMock(return_value="just: a string")):
+    THEME_CACHE.clear()
+    with patch.object(theme_api, "fetch_theme_yaml", AsyncMock(return_value="just: a string")):
         msg = await _call(client, 2, "theme", full_name="a/b", commit="abcd1234")
     assert msg["error"]["code"] == "invalid_theme"
 
@@ -101,7 +111,18 @@ async def test_trial_start_state_accept(hass, setup, hass_ws_client, hass_admin_
     msg = await _call(client, 4, "trial_accept")
     assert msg["result"] == {"accepted": True}
     msg = await _call(client, 5, "trial_state")
-    assert msg["result"] == {"trial": None, "now": 1032.0, "phase": None}
+    assert msg["result"] == {
+        "trial": None,
+        "now": 1032.0,
+        "phase": None,
+        "outcome": {
+            "started_at": 1000.0,
+            "outcome": "accepted",
+            "previous": {"theme": "a"},
+            "candidate": {"theme": "b"},
+            "ended_at": 1032.0,
+        },
+    }
     assert hass.data[DOMAIN]["handles"] == {}
     msg = await _call(client, 6, "trial_accept")
     assert msg["error"]["code"] == "no_trial"
@@ -136,17 +157,31 @@ async def test_watchdog_reverts_after_confirm_window(hass, setup, hass_ws_client
     await client.send_json({"id": 1, "type": "hats_lite/subscribe"})
     assert (await client.receive_json())["success"] is True
     await _call(client, 2, "trial_start", previous={"theme": "a"}, candidate={"theme": "b"})
+    started_at = hass.data[DOMAIN]["store"].get_trial(hass_admin_user.id).started_at
     clock["t"] = 1040.0
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=40))
     await hass.async_block_till_done()
     msg = await client.receive_json()
     assert msg["id"] == 1
     assert msg["type"] == "event"
-    assert msg["event"] == {"type": "revert", "selection": {"theme": "a"}}
+    assert msg["event"] == {"type": "revert", "selection": {"theme": "a"}, "started_at": started_at}
     assert events == [{"user_id": hass_admin_user.id, "selection": {"theme": "a"}}]
     msg = await _call(client, 3, "trial_state")
     assert msg["result"]["trial"] is None
     assert hass.data[DOMAIN]["handles"] == {}
+
+
+async def test_restore_broadcasts_the_trial_started_at(hass, setup, hass_ws_client, hass_admin_user, clock):
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": "hats_lite/subscribe"})
+    assert (await client.receive_json())["success"] is True
+    await _call(client, 2, "trial_start", previous={"theme": "a"}, candidate={"theme": "b"})
+    started_at = hass.data[DOMAIN]["store"].get_trial(hass_admin_user.id).started_at
+    clock["t"] = 1040.0
+    await api.async_restore_watchdogs(hass)
+    await hass.async_block_till_done()
+    msg = await client.receive_json()
+    assert msg["event"] == {"type": "revert", "selection": {"theme": "a"}, "started_at": started_at}
 
 
 async def test_trials_are_per_user(hass, setup, hass_ws_client, hass_read_only_access_token, hass_admin_user):
@@ -234,11 +269,12 @@ async def test_second_trial_keeps_the_original_previous(hass, setup, hass_ws_cli
     assert msg["result"]["trial"]["candidate"] == {"theme": "C"}
     assert first.cancelled()
     assert len(hass.data[DOMAIN]["handles"]) == 1
+    started_at = hass.data[DOMAIN]["store"].all_trials()[0].started_at
     clock["t"] = 1040.0
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=40))
     await hass.async_block_till_done()
     msg = await client.receive_json()
-    assert msg["event"] == {"type": "revert", "selection": {"theme": "A"}}
+    assert msg["event"] == {"type": "revert", "selection": {"theme": "A"}, "started_at": started_at}
 
 
 @pytest.mark.parametrize(

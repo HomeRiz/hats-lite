@@ -11,27 +11,26 @@ except ImportError:
 
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .catalog import CatalogError, load_catalog
 from .const import DOMAIN
+from .outcome_api import ws_outcome_ack
+from .selection import MAX_NAME, valid_selection
 from .sources import hacs_loader, public_loader
-from .theme_fetch import ThemeFetchError, fetch_theme_yaml
+from .theme_api import ws_theme
 from .theme_sanitizer import ThemeError, parse_themes, theme_to_yaml
 from .trial import accept, phase, revert_due, start_trial, trial_to_dict
+from .values import finite_number
 
 SLUG_MAX = 40
 FILE_PREFIX = "hats_lite_"
 REVERT_EVENT = "hats_lite_revert"
 CATALOG_TTL = 300
-MAX_NAME = 80
 MAX_VARIABLES = 300
 MAX_KEY = 80
 MAX_VALUE = 4096
-MAX_COLOR = 32
-SELECTION_KEYS = {"theme", "dark", "primaryColor", "accentColor"}
-COLOR_RE = re.compile(r"[a-zA-Z0-9(),.%\s#-]{1,32}")
 MODE_KEYS = {"dark", "light"}
+END_FIELDS = {vol.Optional("started_at"): finite_number}
 
 
 def _now():
@@ -49,22 +48,6 @@ def theme_file_name(name):
         return None
     digest = hashlib.sha1(str(name).encode("utf-8")).hexdigest()[:6]
     return f"{FILE_PREFIX}{slug}-{digest}.yaml"
-
-
-def valid_selection(value):
-    if not isinstance(value, dict) or not set(value) <= SELECTION_KEYS:
-        return False
-    theme = value.get("theme")
-    if not isinstance(theme, str) or not 1 <= len(theme) <= MAX_NAME:
-        return False
-    if "dark" in value and not isinstance(value["dark"], bool):
-        return False
-    for key in ("primaryColor", "accentColor"):
-        if key in value:
-            color = value[key]
-            if not isinstance(color, str) or len(color) > MAX_COLOR or not COLOR_RE.fullmatch(color):
-                return False
-    return True
 
 
 def _variables(value):
@@ -137,8 +120,8 @@ def schedule_watchdog(hass, trial):
     )
 
 
-def _broadcast(hass, user_id, selection):
-    event = {"type": "revert", "selection": selection}
+def _broadcast(hass, user_id, selection, started_at):
+    event = {"type": "revert", "selection": selection, "started_at": started_at}
     for send in list(_data(hass)["subscribers"].get(user_id, {}).values()):
         send(event)
     hass.bus.async_fire(REVERT_EVENT, {"user_id": user_id, "selection": selection})
@@ -155,8 +138,8 @@ async def _watchdog_fire(hass, user_id):
     if not revert_due(trial, _now()):
         schedule_watchdog(hass, trial)
         return
-    await data["store"].async_clear_trial(user_id)
-    _broadcast(hass, user_id, trial.previous)
+    if await data["store"].async_end_trial(user_id, trial.started_at, "reverted", _now()):
+        _broadcast(hass, user_id, trial.previous, trial.started_at)
 
 
 async def async_start_user_trial(hass, user_id, previous, candidate):
@@ -174,8 +157,8 @@ async def async_restore_watchdogs(hass):
     store = _data(hass)["store"]
     for trial in store.all_trials():
         if revert_due(trial, _now()):
-            await store.async_clear_trial(trial.user_id)
-            _broadcast(hass, trial.user_id, trial.previous)
+            if await store.async_end_trial(trial.user_id, trial.started_at, "reverted", _now()):
+                _broadcast(hass, trial.user_id, trial.previous, trial.started_at)
         else:
             schedule_watchdog(hass, trial)
 
@@ -191,32 +174,6 @@ async def ws_catalog(hass, connection, msg):
         connection.send_error(msg["id"], "catalog_unavailable", "Theme catalog unavailable")
         return
     connection.send_result(msg["id"], {"source": source, "themes": entries})
-
-
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): "hats_lite/theme",
-        vol.Required("full_name"): str,
-        vol.Required("commit"): str,
-        vol.Optional("path"): str,
-    }
-)
-@websocket_api.async_response
-async def ws_theme(hass, connection, msg):
-    if _loaded(hass, connection, msg) is None:
-        return
-    session = async_get_clientsession(hass)
-    try:
-        text = await fetch_theme_yaml(session, msg["full_name"], msg["commit"], msg.get("path"))
-    except ThemeFetchError as err:
-        connection.send_error(msg["id"], "fetch_failed", str(err))
-        return
-    try:
-        themes = await hass.async_add_executor_job(parse_themes, text)
-    except ThemeError as err:
-        connection.send_error(msg["id"], "invalid_theme", str(err))
-        return
-    connection.send_result(msg["id"], {"themes": themes})
 
 
 @websocket_api.websocket_command(
@@ -251,18 +208,26 @@ def ws_trial_state(hass, connection, msg):
             "trial": None if trial is None else trial_to_dict(trial),
             "now": now,
             "phase": None if trial is None else phase(trial, now),
+            "outcome": data["store"].get_outcome(connection.user.id, now),
         },
     )
 
 
-@websocket_api.websocket_command({vol.Required("type"): "hats_lite/trial_accept"})
+def _current_trial(store, user_id, msg):
+    trial = store.get_trial(user_id)
+    if trial is None or msg.get("started_at", trial.started_at) != trial.started_at:
+        return None
+    return trial
+
+
+@websocket_api.websocket_command({vol.Required("type"): "hats_lite/trial_accept", **END_FIELDS})
 @websocket_api.async_response
 async def ws_trial_accept(hass, connection, msg):
     data = _loaded(hass, connection, msg)
     if data is None:
         return
     store = data["store"]
-    trial = store.get_trial(connection.user.id)
+    trial = _current_trial(store, connection.user.id, msg)
     if trial is None:
         connection.send_error(msg["id"], "no_trial", "No trial in progress")
         return
@@ -270,23 +235,23 @@ async def ws_trial_accept(hass, connection, msg):
         connection.send_error(msg["id"], "too_late", "The confirmation window has passed")
         return
     cancel_watchdog(hass, trial.user_id)
-    await store.async_clear_trial(trial.user_id)
+    await store.async_end_trial(trial.user_id, trial.started_at, "accepted", _now())
     connection.send_result(msg["id"], {"accepted": True})
 
 
-@websocket_api.websocket_command({vol.Required("type"): "hats_lite/trial_cancel"})
+@websocket_api.websocket_command({vol.Required("type"): "hats_lite/trial_cancel", **END_FIELDS})
 @websocket_api.async_response
 async def ws_trial_cancel(hass, connection, msg):
     data = _loaded(hass, connection, msg)
     if data is None:
         return
     store = data["store"]
-    trial = store.get_trial(connection.user.id)
+    trial = _current_trial(store, connection.user.id, msg)
     if trial is None:
         connection.send_error(msg["id"], "no_trial", "No trial in progress")
         return
     cancel_watchdog(hass, trial.user_id)
-    await store.async_clear_trial(trial.user_id)
+    await store.async_end_trial(trial.user_id, trial.started_at, "cancelled", _now())
     connection.send_result(msg["id"], {"revert": trial.previous})
 
 
@@ -380,6 +345,7 @@ COMMANDS = (
     ws_trial_cancel,
     ws_subscribe,
     ws_save_theme,
+    ws_outcome_ack,
 )
 
 
