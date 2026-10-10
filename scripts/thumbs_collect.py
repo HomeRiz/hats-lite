@@ -37,6 +37,8 @@ CATALOG_LIMIT = 32 * 1024 * 1024
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 RETRY_DELAYS = (2, 6, 15)
 FAILURES = ("fetch_failed", "invalid_theme", "too_large")
+FLOOR = 0.9
+INDEX_PATH = ROOT / "custom_components" / "hats_lite" / "frontend" / "thumbs" / "index.json"
 
 
 class Retryable(Exception):
@@ -82,29 +84,38 @@ async def fetch_catalog(session):
 
 
 async def fetch_license(session, full_name, commit):
+    listing = await _get_bytes(
+        session,
+        JSDELIVR_URL.format(full_name=_quote(full_name), commit=_quote(commit)),
+        4 * 1024 * 1024,
+    )
     try:
-        listing = await _get_bytes(
-            session,
-            JSDELIVR_URL.format(full_name=_quote(full_name), commit=_quote(commit)),
-            4 * 1024 * 1024,
-        )
         files = json.loads(listing).get("files")
         names = [f.get("name") for f in files if isinstance(f, dict)]
-        found = license_file_name(names)
-        if found is None:
-            return None
-        url = RAW_URL.format(full_name=_quote(full_name), commit=_quote(commit), path=_quote(found))
-        text = (await _get_bytes(session, url, LICENSE_LIMIT)).decode("utf-8", errors="replace")
-        return classify_license(text)
-    except (ThemeFetchError, ValueError, AttributeError, TypeError):
+    except (ValueError, AttributeError, TypeError):
+        raise ThemeFetchError("Unexpected file listing")
+    found = license_file_name(names)
+    if found is None:
         return None
+    url = RAW_URL.format(full_name=_quote(full_name), commit=_quote(commit), path=_quote(found))
+    text = (await _get_bytes(session, url, LICENSE_LIMIT)).decode("utf-8", errors="replace")
+    return classify_license(text)
+
+
+async def license_with_fallback(fetch_lic, full_name, commit, previous):
+    for _ in range(2):
+        try:
+            return await fetch_lic(full_name, commit)
+        except ThemeFetchError:
+            continue
+    return (previous or {}).get(full_name)
 
 
 def _failure_kind(err):
     return "too_large" if "too large" in str(err).lower() else None
 
 
-async def build_record(entry, fetch_yaml, fetch_lic, policy):
+async def build_record(entry, fetch_yaml, fetch_lic, policy, previous=None):
     commit = entry.get("last_commit") or "HEAD"
     full_name = entry["full_name"]
     try:
@@ -121,8 +132,8 @@ async def build_record(entry, fetch_yaml, fetch_lic, policy):
     vars_ = first.get("vars", {})
     modes = first.get("modes", {})
     flags = compute_flags(name, entry.get("description") or "", vars_, modes)
-    license_id = await fetch_lic(full_name, commit)
-    vars_, modes, wallpaper = apply_wallpaper_policy(vars_, modes, license_id, policy)
+    license_id = await license_with_fallback(fetch_lic, full_name, commit, previous)
+    vars_, modes, wallpaper = apply_wallpaper_policy(vars_, modes, license_id, policy, full_name, commit)
     record = {
         "full_name": full_name,
         "commit": commit,
@@ -136,15 +147,18 @@ async def build_record(entry, fetch_yaml, fetch_lic, policy):
     return record, None
 
 
-async def collect(entries, fetch_yaml, fetch_lic, policy="licensed", concurrency=4):
+async def collect(entries, fetch_yaml, fetch_lic, policy="licensed", concurrency=4, previous=None):
     gate = asyncio.Semaphore(max(1, min(concurrency, MAX_CONCURRENCY)))
 
     async def one(entry):
         async with gate:
-            return await build_record(entry, fetch_yaml, fetch_lic, policy)
+            return await build_record(entry, fetch_yaml, fetch_lic, policy, previous)
 
     results = await asyncio.gather(*(one(entry) for entry in entries))
-    records = [record for record, _ in results if record is not None]
+    records = sorted(
+        (record for record, _ in results if record is not None),
+        key=lambda record: record["full_name"],
+    )
     failures = {kind: 0 for kind in FAILURES}
     for record, kind in results:
         if record is None:
@@ -168,7 +182,51 @@ def summary(records, failures, total):
     }
 
 
-async def run(out_dir, limit, concurrency, policy):
+def load_previous(path):
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        return {
+            item["full_name"]: item.get("license")
+            for item in data["themes"]
+            if isinstance(item, dict) and isinstance(item.get("full_name"), str)
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
+def below_floor(collected, requested, previous_count, allow_shrink=False):
+    if collected <= 0:
+        return "no themes collected"
+    if collected < FLOOR * requested:
+        return f"collected {collected} of {requested} requested themes"
+    if not allow_shrink and collected < FLOOR * previous_count:
+        return f"collected {collected} against {previous_count} in the committed index"
+    return None
+
+
+def finalize(out_dir, records, failures, requested, previous_count, allow_shrink=False):
+    report = summary(records, failures, requested)
+    reason = below_floor(len(records), requested, previous_count, allow_shrink)
+    if reason:
+        report["error"] = reason
+        print(json.dumps(report, indent=2))
+        print("refusing to write: " + reason, file=sys.stderr)
+        return report, False
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "data.json").write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
+    print(json.dumps(report, indent=2))
+    return report, True
+
+
+async def run(out_dir, limit, concurrency, policy, allow_shrink=False):
+    if policy == "all":
+        print(
+            "WARNING: --backgrounds all keeps wallpapers regardless of license; "
+            "never commit or publish its output",
+            file=sys.stderr,
+        )
+    previous = load_previous(INDEX_PATH)
     timeout = aiohttp.ClientTimeout(total=40)
     headers = {"User-Agent": USER_AGENT}
     async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
@@ -182,13 +240,8 @@ async def run(out_dir, limit, concurrency, policy):
         async def fetch_lic(full_name, commit):
             return await fetch_license(session, full_name, commit)
 
-        records, failures = await collect(entries, fetch_yaml, fetch_lic, policy, concurrency)
-    out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "data.json").write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
-    report = summary(records, failures, len(entries))
-    print(json.dumps(report, indent=2))
-    return report
+        records, failures = await collect(entries, fetch_yaml, fetch_lic, policy, concurrency, previous)
+    return finalize(out_dir, records, failures, len(entries), 0 if limit else len(previous), allow_shrink)
 
 
 def main(argv=None):
@@ -197,9 +250,10 @@ def main(argv=None):
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--backgrounds", choices=("licensed", "all", "none"), default="licensed")
+    parser.add_argument("--allow-shrink", action="store_true")
     args = parser.parse_args(argv)
-    report = asyncio.run(run(args.out_dir, args.limit, args.concurrency, args.backgrounds))
-    return 0 if report["collected"] else 1
+    _, ok = asyncio.run(run(args.out_dir, args.limit, args.concurrency, args.backgrounds, args.allow_shrink))
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

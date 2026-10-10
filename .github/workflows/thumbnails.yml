@@ -5,30 +5,58 @@ on:
     - cron: "0 4 * * 1"
   workflow_dispatch:
 
-permissions: {}
+permissions:
+  contents: read
+
+concurrency:
+  group: thumbnails
+  cancel-in-progress: false
 
 jobs:
-  thumbnails:
-    runs-on: ubuntu-latest
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - run: npm ci --ignore-scripts
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-roboto fonts-dejavu-core && fc-cache -f
+      - id: chrome
+        run: echo "path=$(npx --no-install @puppeteer/browsers install chrome@150 --path "$RUNNER_TEMP/chrome" --format '{{path}}')" >> "$GITHUB_OUTPUT"
+      - run: python scripts/thumbs_collect.py "$RUNNER_TEMP/thumbs"
+      - run: node scripts/thumbs-render.mjs "$RUNNER_TEMP/thumbs"
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.path }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: thumbs
+          path: custom_components/hats_lite/frontend/thumbs
+          if-no-files-found: error
+          retention-days: 3
+
+  pr:
+    needs: render
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
         with:
-          python-version: "3.13"
-      - run: pip install -r requirements-dev.txt
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
         with:
-          node-version: "22"
-      - run: npm ci
-      - uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce
-        id: chrome
-      - run: python scripts/thumbs_collect.py "$RUNNER_TEMP/thumbs"
-      - run: node scripts/thumbs-render.mjs "$RUNNER_TEMP/thumbs"
-        env:
-          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          name: thumbs
+          path: custom_components/hats_lite/frontend/thumbs
       - uses: peter-evans/create-pull-request@84ae59a2cdc2258d6fa0732dd66352dddae2a412
         with:
           sign-commits: true

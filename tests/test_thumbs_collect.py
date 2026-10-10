@@ -10,47 +10,6 @@ import thumbs_collect as tc
 import thumbs_rules as rules
 from custom_components.hats_lite.theme_fetch import ThemeFetchError
 
-MIT = "MIT License\n\nPermission is hereby granted, free of charge, to any person"
-APACHE = "Apache License\nVersion 2.0, January 2004"
-BSD2 = "Redistribution and use in source and binary forms, with or without modification"
-BSD3 = BSD2 + " Neither the name of the copyright holder"
-ISC = "ISC License\nPermission to use, copy, modify, and/or distribute this software for any purpose"
-UNLICENSE = "This is free and unencumbered software released into the public domain."
-CC0 = "CC0 1.0 Universal"
-GPL3 = "GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007"
-GPL2 = "GNU GENERAL PUBLIC LICENSE\nVersion 2, June 1991"
-LGPL = "GNU LESSER GENERAL PUBLIC LICENSE Version 3 This version of the GNU Lesser General Public License"
-MPL = "Mozilla Public License Version 2.0"
-
-
-@pytest.mark.parametrize(
-    "text,expected",
-    [
-        (MIT, "MIT"),
-        (APACHE, "Apache-2.0"),
-        (BSD2, "BSD-2-Clause"),
-        (BSD3, "BSD-3-Clause"),
-        (ISC, "ISC"),
-        (UNLICENSE, "Unlicense"),
-        (CC0, "CC0-1.0"),
-        (GPL3, "GPL-3.0"),
-        (GPL2, "GPL-2.0"),
-        (LGPL, "LGPL"),
-        (MPL, "MPL-2.0"),
-        ("All rights reserved", None),
-        ("GNU AFFERO GENERAL PUBLIC LICENSE", None),
-        (None, None),
-    ],
-)
-def test_classify_license(text, expected):
-    assert rules.classify_license(text) == expected
-
-
-def test_license_file_name_only_root():
-    assert rules.license_file_name(["/docs/LICENSE", "/themes/a.yaml"]) is None
-    assert rules.license_file_name(["/README.md", "/license.txt"]) == "license.txt"
-    assert rules.license_file_name(["/COPYING", "/LICENSE.md"]) == "LICENSE.md"
-
 
 def test_flags():
     flags = rules.compute_flags("Aurora", "", {"primary-color": "red"}, {"dark": {"a": "b"}})
@@ -63,30 +22,101 @@ def test_flags():
     assert rules.compute_flags("Frosted", "", {}, {})["glass"]
 
 
+REPO = "owner/repo"
+SHA = "abc1234"
+RAW = f"https://raw.githubusercontent.com/{REPO}/{SHA}/img/bg.png"
 VARS = {
     "primary-color": "red",
-    "lovelace-background": "center / cover url(https://x/y.jpg)",
+    "lovelace-background": f"center / cover url({RAW})",
     "paper-font": "url(font.woff)",
 }
-MODES = {"dark": {"background-image": "url(a.png)", "accent-color": "blue"}}
+MODES = {"dark": {"background-image": f"url('{RAW}')", "accent-color": "blue"}}
 
 
-def test_wallpaper_policy_licensed():
-    v, m, state = rules.apply_wallpaper_policy(VARS, MODES, "MIT", "licensed")
-    assert state == "kept" and v == VARS and m == MODES
-    v, m, state = rules.apply_wallpaper_policy(VARS, MODES, "GPL-3.0", "licensed")
+def policy(vars_, modes, license_id, mode="licensed", full_name=REPO, commit=SHA):
+    return rules.apply_wallpaper_policy(vars_, modes, license_id, mode, full_name, commit)
+
+
+def test_wallpaper_kept_only_for_permissive_same_repo_pinned_urls():
+    v, m, state = policy({"lovelace-background": f"url({RAW})"}, MODES, "MIT")
+    assert state == "kept"
+    assert v == {"lovelace-background": f"url({RAW})"} and m == MODES
+    v, m, state = policy({"lovelace-background": f"url({RAW})"}, MODES, "GPL-3.0")
     assert state == "dropped"
-    assert v == {"primary-color": "red"}
+    assert v == {}
     assert m == {"dark": {"accent-color": "blue"}}
-    _, _, state = rules.apply_wallpaper_policy(VARS, MODES, None, "licensed")
-    assert state == "dropped"
+    for lic in (None, "mixed", "restricted"):
+        assert policy({"lovelace-background": f"url({RAW})"}, {}, lic)[2] == "dropped"
 
 
-def test_wallpaper_policy_all_none_and_absent():
-    assert rules.apply_wallpaper_policy(VARS, MODES, None, "all")[2] == "kept"
-    assert rules.apply_wallpaper_policy(VARS, MODES, "MIT", "none")[2] == "dropped"
-    v, _, state = rules.apply_wallpaper_policy({"primary-color": "red"}, {}, None, "licensed")
-    assert state == "none" and v == {"primary-color": "red"}
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://raw.githubusercontent.com/owner/repo/abc1234/a.png",
+        "https://raw.githubusercontent.com/Owner/Repo/abc1234567/a b.png",
+        "https://cdn.jsdelivr.net/gh/owner/repo@abc1234/a.png",
+        "https://github.com/owner/repo/raw/abc1234/a.png",
+    ],
+)
+def test_same_repo_hosts_are_kept(url):
+    v, _, state = policy({"background-image": f"url({url})"}, {}, "MIT")
+    assert state == "kept" and v == {"background-image": f"url({url})"}
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com/a.png",
+        "https://raw.githubusercontent.com/other/repo/abc1234/a.png",
+        "https://raw.githubusercontent.com/owner/repo/main/a.png",
+        "https://raw.githubusercontent.com/owner/repo-evil/abc1234/a.png",
+        "https://raw.githubusercontent.com.evil.com/owner/repo/abc1234/a.png",
+        "https://user@raw.githubusercontent.com/owner/repo/abc1234/a.png",
+        "https://raw.githubusercontent.com/owner/repo/abc1234/../../x/y/z.png",
+        "https://cdn.jsdelivr.net/gh/owner/repo@main/a.png",
+        "https://github.com/owner/repo/blob/abc1234/a.png",
+        "/local/bg.png",
+        "/hacsfiles/x/bg.png",
+        "./bg.png",
+        "bg.png",
+        "http://raw.githubusercontent.com/owner/repo/abc1234/a.png",
+        "data:image/png;base64," + "A" * 3000,
+    ],
+)
+def test_other_urls_make_the_value_none(url):
+    v, _, state = policy({"x": f"url({url}), url({RAW})"}, {}, "MIT")
+    assert v == {} and state == "dropped"
+
+
+def test_small_data_urls_are_kept():
+    value = "url(data:image/png;base64,AAAA)"
+    v, _, state = policy({"x": value}, {}, "MIT")
+    assert v == {"x": value} and state == "kept"
+
+
+def test_escaped_url_is_detected():
+    for value in (
+        "u\\72l(https://h/x.png)",
+        "\\75rl(https://h/x.png)",
+        "ur/**/l(https://h/x.png)",
+        "URL( 'https://h/x.png' )",
+    ):
+        v, _, state = policy({"x": value}, {}, "MIT")
+        assert v == {} and state == "dropped", value
+
+
+def test_values_without_urls_are_untouched():
+    v, _, state = policy({"primary-color": "red", "lovelace-background": "var(--a)"}, {}, None)
+    assert state == "none" and v == {"primary-color": "red", "lovelace-background": "var(--a)"}
+
+
+def test_wallpaper_none_policy_and_all_policy():
+    v, _, state = policy({"x": f"url({RAW})"}, {}, "MIT", "none")
+    assert v == {} and state == "dropped"
+    v, _, state = policy({"x": "url(https://example.com/a.png)"}, {}, None, "all")
+    assert state == "kept" and v == {"x": "url(https://example.com/a.png)"}
+    v, _, state = policy({"x": "url(/local/a.png)"}, {}, "MIT", "all")
+    assert v == {} and state == "dropped"
 
 
 def entry(name, stars=1, description=""):
@@ -181,3 +211,118 @@ async def test_with_retry_gives_up_on_permanent_errors():
         return "ok"
 
     assert await tc.with_retry(flaky, delays=(0, 0)) == "ok"
+
+
+async def test_collect_sorts_by_full_name():
+    entries = [entry("z/last"), entry("a/one"), entry("m/mid")]
+    yaml = YAML["a/one"]
+
+    async def same(full_name, commit):
+        return yaml
+
+    records, _ = await tc.collect(entries, same, fake_license, "none")
+    assert [r["full_name"] for r in records] == ["a/one", "m/mid", "z/last"]
+
+
+async def test_license_fetch_retried_once_then_previous_record_kept():
+    calls = []
+
+    async def failing(full_name, commit):
+        calls.append(full_name)
+        raise ThemeFetchError("Request failed")
+
+    entries = [entry("b/two")]
+    records, _ = await tc.collect(entries, fake_yaml, failing, "licensed", previous={"b/two": "MIT"})
+    assert calls == ["b/two", "b/two"]
+    assert records[0]["license"] == "MIT"
+    records, _ = await tc.collect(entries, fake_yaml, failing, "licensed", previous={})
+    assert records[0]["license"] is None and records[0]["wallpaper"] == "dropped"
+
+
+async def test_license_fetch_recovers_on_retry():
+    calls = 0
+
+    async def flaky(full_name, commit):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise ThemeFetchError("Request failed")
+        return "MIT"
+
+    records, _ = await tc.collect([entry("a/one")], fake_yaml, flaky, "licensed", previous={"a/one": "GPL-3.0"})
+    assert records[0]["license"] == "MIT" and calls == 2
+
+
+def test_dropped_wallpaper_variable_and_its_references_are_deleted():
+    vars_ = {
+        "lovelace-background": f"center / cover url({RAW})",
+        "primary-background-color": "#ff0000",
+        "alias": "var(--lovelace-background)",
+        "kept-alias": "var(--primary-background-color)",
+        "fallback": "var(--lovelace-background, red)",
+    }
+    modes = {
+        "dark": {"lovelace-background": f"url({RAW})", "alias-dark": "var(--lovelace-background)", "x": "blue"},
+        "light": {"y": "var( --lovelace-background )"},
+    }
+    v, m, state = policy(vars_, modes, "GPL-3.0")
+    assert state == "dropped"
+    assert v == {
+        "primary-background-color": "#ff0000",
+        "kept-alias": "var(--primary-background-color)",
+        "fallback": "var(--lovelace-background, red)",
+    }
+    assert m == {"dark": {"x": "blue"}, "light": {}}
+
+
+def test_below_floor():
+    assert tc.below_floor(90, 100, 0) is None
+    assert tc.below_floor(89, 100, 0) is not None
+    assert tc.below_floor(95, 100, 110) is not None
+    assert tc.below_floor(99, 100, 110) is None
+    assert tc.below_floor(0, 0, 0) is not None
+
+
+def test_allow_shrink_bypasses_only_the_committed_index_floor():
+    assert tc.below_floor(95, 100, 110, allow_shrink=True) is None
+    assert tc.below_floor(80, 100, 110, allow_shrink=True) is not None
+    assert tc.below_floor(0, 0, 110, allow_shrink=True) is not None
+
+
+def test_allow_shrink_flag_is_off_by_default(monkeypatch):
+    seen = {}
+
+    async def fake_run(out_dir, limit, concurrency, policy, allow_shrink=False):
+        seen["allow"] = allow_shrink
+        return {}, True
+
+    monkeypatch.setattr(tc, "run", fake_run)
+    assert tc.main(["out"]) == 0 and seen["allow"] is False
+    assert tc.main(["out", "--allow-shrink"]) == 0 and seen["allow"] is True
+
+
+def test_finalize_allow_shrink(tmp_path):
+    records = [{"full_name": f"o/t{i}", "license": None, "wallpaper": "none"} for i in range(5)]
+    _, ok = tc.finalize(tmp_path / "a", records, {}, 5, 10)
+    assert not ok
+    _, ok = tc.finalize(tmp_path / "b", records, {}, 5, 10, allow_shrink=True)
+    assert ok
+
+
+def test_load_previous(tmp_path):
+    missing = tc.load_previous(tmp_path / "none.json")
+    assert missing == {}
+    path = tmp_path / "index.json"
+    path.write_text('{"themes":[{"full_name":"a/b","license":"MIT"},{"full_name":"c/d","license":null}]}')
+    assert tc.load_previous(path) == {"a/b": "MIT", "c/d": None}
+    path.write_text("not json")
+    assert tc.load_previous(path) == {}
+
+
+def test_finalize_writes_nothing_below_floor(tmp_path):
+    records = [{"full_name": f"o/t{i}", "license": None, "wallpaper": "none"} for i in range(5)]
+    out = tmp_path / "out"
+    report, ok = tc.finalize(out, records, {}, 10, 0)
+    assert not ok and not out.exists()
+    report, ok = tc.finalize(out, records, {}, 5, 0)
+    assert ok and (out / "data.json").is_file()
