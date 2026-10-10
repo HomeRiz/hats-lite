@@ -11,7 +11,7 @@ from pytest_homeassistant_custom_component.common import (
     async_mock_service,
 )
 
-from custom_components.hats_lite import api, theme_api
+from custom_components.hats_lite import api, theme_api, theme_files
 from custom_components.hats_lite.theme_cache import THEME_CACHE
 from custom_components.hats_lite.catalog import CatalogError
 from custom_components.hats_lite.const import DOMAIN
@@ -25,6 +25,13 @@ def clock(monkeypatch):
     state = {"t": 1000.0}
     monkeypatch.setattr(api, "_now", lambda: state["t"])
     return state
+
+
+@pytest.fixture(autouse=True)
+def theme_catalog():
+    entries = [{"full_name": "a/b", "description": "", "stars": 1, "installed": False, "last_commit": None, "hacs_id": None}]
+    with patch.object(theme_api, "load_catalog_for_hass", AsyncMock(return_value=(entries, "public"))):
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -218,16 +225,17 @@ async def test_save_theme_writes_file_and_reloads(hass, setup, hass_ws_client, t
     assert len(calls) == 1
 
 
-async def test_save_theme_drops_unsafe_values(hass, setup, hass_ws_client, tmp_path):
+async def test_save_theme_reports_unsafe_values(hass, setup, hass_ws_client, tmp_path):
     async_mock_service(hass, "frontend", "reload_themes")
     client = await hass_ws_client(hass)
     msg = await _call(
         client, 1, "save_theme",
         name="Mix", variables={"primary-color": "#fff", "bad": "url(javascript:alert(1))"}, modes={},
     )
-    assert msg["success"] is True
-    written = yaml.safe_load((tmp_path / "themes" / api.theme_file_name("Mix")).read_text())
-    assert written == {"Mix": {"primary-color": "#fff"}}
+    assert msg["success"] is False
+    assert msg["error"]["code"] == "invalid_value"
+    assert "bad" in msg["error"]["message"]
+    assert not (tmp_path / "themes").exists()
 
 
 async def test_save_theme_rejects_invalid_names_and_empty_themes(hass, setup, hass_ws_client, tmp_path):
@@ -238,7 +246,7 @@ async def test_save_theme_rejects_invalid_names_and_empty_themes(hass, setup, ha
     msg = await _call(client, 2, "save_theme", name="!!!", variables={"primary-color": "#fff"}, modes={})
     assert msg["error"]["code"] == "invalid_theme"
     msg = await _call(client, 3, "save_theme", name="Empty", variables={"bad": "url(javascript:x)"}, modes={})
-    assert msg["error"]["code"] == "invalid_theme"
+    assert msg["error"]["code"] == "invalid_value"
     assert not (tmp_path / "themes").exists()
     assert calls == []
 
@@ -316,7 +324,7 @@ async def test_trial_start_accepts_valid_selections(hass, setup, hass_ws_client)
 
 async def test_save_theme_schema_bounds(hass, setup, hass_ws_client, tmp_path):
     client = await hass_ws_client(hass)
-    with patch.object(api, "theme_to_yaml") as dump:
+    with patch.object(theme_files, "theme_to_yaml") as dump:
         many = {f"k{i}": "#fff" for i in range(301)}
         msg = await _call(client, 1, "save_theme", name="N", variables=many, modes={})
         assert msg["success"] is False
@@ -353,7 +361,7 @@ async def test_save_theme_failure_returns_save_failed(hass, setup, hass_ws_clien
 
 
 def test_write_theme_cleans_temp_on_failure(tmp_path):
-    with patch.object(api.os, "replace", side_effect=OSError("x")):
+    with patch.object(theme_files.os, "replace", side_effect=OSError("x")):
         with pytest.raises(OSError):
             api._write_theme(str(tmp_path), "f.yaml", "a: 1\n")
     assert list(tmp_path.iterdir()) == []

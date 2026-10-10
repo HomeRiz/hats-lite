@@ -1,30 +1,46 @@
-import html
 import math
 import re
-import unicodedata
-from collections.abc import Mapping
 
 import yaml
 
 from .const import MAX_THEME_BYTES
+from .theme_loader import (
+    InvalidValueError,
+    ThemeError,
+    ThemeTooLargeError,
+    load_yaml,
+)
+from .theme_urls import (
+    _normalize_value,
+    _split_urls,
+    _without_urls,
+    extract_urls,
+)
 
 KEY = re.compile(r"^[A-Za-z0-9_-]{1,80}\Z")
-NAME = re.compile(r"^[\w .'()+-]{1,80}\Z")
+NAME = re.compile(r"^[\w .'()+\[\]-]{1,80}\Z")
 MAX_VALUE = 900_000
 
-CSS_ESCAPE = re.compile(r"\\([0-9a-fA-F]{1,6}) ?|\\(.)", re.DOTALL)
-CSS_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
-VAR_PATTERN = re.compile(r"^var\(--[a-z0-9_-]+\)\Z", re.IGNORECASE)
-BASE64_PATTERN = re.compile(r"^[a-z0-9+/]*={0,2}\Z")
-
-INVISIBLE_CHARS = frozenset([
-    'ㅤ',
-    '᠎',
-    '­',
-    '︀', '︁', '︂', '︃', '︄',
-    '︅', '︆', '︇', '︈', '︉',
-    '︊', '︋', '︌', '︍', '︎', '️',
-])
+URL_REST = re.compile(r"^[a-z0-9#%,./()+*_:'\"!-]*\Z")
+IMPORTANT_WORD = "important"
+FORBIDDEN_NAMES = frozenset({
+    "__proto__",
+    "constructor",
+    "prototype",
+    "tostring",
+    "hasownproperty",
+    "valueof",
+    "__definegetter__",
+    "__definesetter__",
+    "__lookupgetter__",
+    "__lookupsetter__",
+    "isprototypeof",
+    "propertyisenumerable",
+    "tolocalestring",
+})
+MAX_TOTAL_CHARS = 6 * 1024 * 1024
+MAX_TOTAL_VARIABLES = 250000
+MAX_TRAILING_ROUNDS = 4
 
 REJECT_PATTERNS = frozenset([
     "javascript:",
@@ -40,123 +56,24 @@ REJECT_PATTERNS = frozenset([
     "&#",
 ])
 
-ALLOWED_DATA_PREFIXES = (
-    "data:image/png;base64,",
-    "data:image/jpeg;base64,",
-    "data:image/jpg;base64,",
-    "data:image/webp;base64,",
-    "data:image/gif;base64,",
-)
+
+def _strip_important(value):
+    stripped = value.rstrip()
+    if stripped[-len(IMPORTANT_WORD):].lower() != IMPORTANT_WORD:
+        return value
+    head = stripped[: -len(IMPORTANT_WORD)].rstrip()
+    if not head.endswith("!"):
+        return value
+    return head[:-1].rstrip()
 
 
-class ThemeError(ValueError):
-    pass
-
-
-def _resolve_css_escapes(s):
-    def replace_escape(match):
-        if match.group(1):
-            return chr(int(match.group(1), 16))
-        return match.group(2)
-    return CSS_ESCAPE.sub(replace_escape, s)
-
-
-def _normalize_value(v):
-    if not isinstance(v, str):
-        return v
-    normalized = unicodedata.normalize("NFKC", v)
-    normalized = html.unescape(normalized)
-    normalized = _resolve_css_escapes(normalized)
-    normalized = CSS_COMMENT.sub("", normalized)
-    normalized = "".join(
-        c for c in normalized
-        if unicodedata.category(c) not in ("Zs", "Zl", "Zp", "Cc", "Cn", "Cf")
-        and c not in "\t\n\r\x00"
-        and c not in INVISIBLE_CHARS
-    )
-    normalized = normalized.casefold()
-    return normalized
-
-
-def _validate_urls(normalized):
-    url_count = 0
-    pos = 0
-
-    while True:
-        pos = normalized.find("url(", pos)
-        if pos == -1:
+def _strip_trailing(value):
+    for _ in range(MAX_TRAILING_ROUNDS):
+        stripped = _strip_important(value).rstrip().rstrip(";").rstrip()
+        if stripped == value:
             break
-
-        url_count += 1
-        if url_count > 50:
-            return False
-
-        pos += 4
-        if pos >= len(normalized):
-            return False
-
-        quote_char = None
-        if pos < len(normalized) and normalized[pos] in ("'", '"'):
-            quote_char = normalized[pos]
-            pos += 1
-
-        arg_start = pos
-        found_close = False
-        paren_depth = 0
-
-        while pos < len(normalized):
-            if quote_char:
-                if normalized[pos] == quote_char:
-                    arg_end = pos
-                    pos += 1
-                    if pos < len(normalized) and normalized[pos] == ")":
-                        found_close = True
-                        pos += 1
-                    break
-                pos += 1
-            else:
-                if normalized[pos] == "(":
-                    paren_depth += 1
-                elif normalized[pos] == ")":
-                    if paren_depth == 0:
-                        arg_end = pos
-                        found_close = True
-                        pos += 1
-                        break
-                    paren_depth -= 1
-                pos += 1
-
-        if not found_close:
-            return False
-
-        url_arg = normalized[arg_start:arg_end]
-        if not url_arg:
-            return False
-
-        if VAR_PATTERN.match(url_arg):
-            continue
-
-        is_data = url_arg.startswith("data:")
-        is_https = url_arg.startswith("https://")
-        is_local = url_arg.startswith(("/local/", "/hacsfiles/", "./", "../"))
-
-        if is_data:
-            matched_prefix = False
-            for prefix in ALLOWED_DATA_PREFIXES:
-                if url_arg.startswith(prefix):
-                    b64_part = url_arg[len(prefix):]
-                    if not BASE64_PATTERN.match(b64_part):
-                        return False
-                    matched_prefix = True
-                    break
-            if not matched_prefix:
-                return False
-        elif is_https or is_local:
-            pass
-        else:
-            return False
-
-    return True
+        value = stripped
+    return value
 
 
 def sanitize_value(value, key=None):
@@ -165,25 +82,37 @@ def sanitize_value(value, key=None):
     if isinstance(value, (int, float)):
         if isinstance(value, float) and not math.isfinite(value):
             return None
-        return str(value)
+        try:
+            return str(value)
+        except ValueError:
+            return None
 
     if not isinstance(value, str) or len(value) > MAX_VALUE:
         return None
+    key_lower = (key or "").lower()
+    css_block = key_lower.startswith("card-mod-") or key_lower.startswith("uix-")
+    value = _strip_important(value) if css_block else _strip_trailing(value)
+    if not value:
+        return None
 
-    normalized = _normalize_value(value)
+    try:
+        normalized = _normalize_value(value)
+    except (InvalidValueError, ValueError, OverflowError):
+        return None
 
     for pattern in REJECT_PATTERNS:
         if pattern in normalized:
             return None
 
-    if not _validate_urls(normalized):
+    rest = _split_urls(normalized)
+    if rest is None:
         return None
 
-    value_without_urls = re.sub(r"url\([^)]*\)", "", value)
-    raw_contains_special = any(c in value_without_urls for c in "{};")
-    if raw_contains_special:
-        key_lower = (key or "").lower() if key else ""
-        if not (key_lower.startswith("card-mod-") or key_lower.startswith("uix-")):
+    if not css_block:
+        raw_rest = _without_urls(value)
+        if any(c in raw_rest or c in rest for c in "{};"):
+            return None
+        if rest != normalized and not URL_REST.match(rest):
             return None
 
     return value
@@ -194,10 +123,38 @@ def _clean(block):
     for key, value in block.items():
         if not isinstance(key, str) or not KEY.fullmatch(key):
             continue
+        if key.casefold() in FORBIDDEN_NAMES:
+            continue
         clean = sanitize_value(value, key)
         if clean is not None:
             out[key] = clean
     return out
+
+
+def _budget_blocks(doc):
+    for name, body in doc.items():
+        if not isinstance(name, str) or not isinstance(body, dict):
+            continue
+        yield body
+        modes = body.get("modes")
+        if isinstance(modes, dict):
+            for mode in ("dark", "light"):
+                if isinstance(modes.get(mode), dict):
+                    yield modes[mode]
+
+
+def _check_budget(doc):
+    chars = 0
+    variables = 0
+    for block in _budget_blocks(doc):
+        variables += len(block)
+        if variables > MAX_TOTAL_VARIABLES:
+            raise ThemeTooLargeError("Theme file has too many variables")
+        for value in block.values():
+            if isinstance(value, str):
+                chars += len(value)
+                if chars > MAX_TOTAL_CHARS:
+                    raise ThemeTooLargeError("Theme file is too large")
 
 
 def parse_themes(text):
@@ -206,23 +163,19 @@ def parse_themes(text):
 
     text_bytes = text.encode("utf-8")
     if len(text_bytes) > MAX_THEME_BYTES:
-        raise ThemeError("Theme file is too large")
+        raise ThemeTooLargeError("Theme file is too large")
 
-    try:
-        doc = yaml.safe_load(text)
-    except (yaml.YAMLError, RecursionError, MemoryError) as err:
-        if isinstance(err, (RecursionError, MemoryError)):
-            raise ThemeError("Theme file is too deeply nested") from err
-        raise ThemeError("Theme file is not valid YAML") from err
+    doc = load_yaml(text)
 
     if not isinstance(doc, dict):
         raise ThemeError("Theme file is not a mapping of themes")
+    _check_budget(doc)
     themes = {}
     for name, body in doc.items():
         if not isinstance(name, str):
             continue
-        if not NAME.fullmatch(name):
-            raise ThemeError("Theme name has unsupported characters")
+        if not NAME.fullmatch(name) or name.casefold() in FORBIDDEN_NAMES:
+            continue
         if not isinstance(body, dict):
             continue
         modes_raw = body.get("modes")

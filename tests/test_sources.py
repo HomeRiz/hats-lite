@@ -155,13 +155,17 @@ async def test_catalog_is_cached_for_five_minutes(hass, setup, clock):
         assert hacs.await_count == 2
 
 
-async def test_catalog_errors_are_not_cached(hass, setup, clock):
+async def test_catalog_errors_are_cached_briefly(hass, setup, clock):
     hacs = AsyncMock(return_value=None)
     public = AsyncMock(side_effect=RuntimeError("down"))
     with patch.object(api, "hacs_loader", hacs), patch.object(api, "public_loader", public):
         for _ in range(2):
             with pytest.raises(CatalogError):
                 await api.load_catalog_for_hass(hass)
+        assert public.await_count == 1
+        clock["t"] = 1000.0 + api.CATALOG_FAILURE_TTL + 1
+        with pytest.raises(CatalogError):
+            await api.load_catalog_for_hass(hass)
     assert public.await_count == 2
 
 

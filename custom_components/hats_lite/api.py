@@ -1,8 +1,5 @@
-import hashlib
-import os
-import re
+import asyncio
 import time
-import uuid
 
 try:
     import probatio as vol
@@ -10,22 +7,33 @@ except ImportError:
     import voluptuous as vol
 
 from homeassistant.components import websocket_api
+from homeassistant.components.frontend import DATA_THEMES
 from homeassistant.core import HomeAssistant, callback
 
 from .catalog import CatalogError, load_catalog
-from .const import DOMAIN
+from .const import DOMAIN, UPLOAD_DIR_NAME
 from .outcome_api import ws_outcome_ack
 from .selection import MAX_NAME, valid_selection
 from .sources import hacs_loader, public_loader
 from .theme_api import ws_theme
-from .theme_sanitizer import ThemeError, parse_themes, theme_to_yaml
+from .theme_save import (
+    check_backgrounds,
+    files_defining,
+    inspect_target,
+    is_reserved,
+    read_previous,
+    restore,
+)
+from .theme_files import DroppedValuesError, _build_theme_text, _write_theme, theme_file_name, theme_slug
+from .theme_sanitizer import ThemeError
 from .trial import accept, phase, revert_due, start_trial, trial_to_dict
 from .values import finite_number
+from .views import record_www_state
 
-SLUG_MAX = 40
-FILE_PREFIX = "hats_lite_"
 REVERT_EVENT = "hats_lite_revert"
 CATALOG_TTL = 300
+CATALOG_FAILURE_TTL = 15
+CATALOG_STALE_SECONDS = 6 * 3600
 MAX_VARIABLES = 300
 MAX_KEY = 80
 MAX_VALUE = 4096
@@ -35,19 +43,6 @@ END_FIELDS = {vol.Optional("started_at"): finite_number}
 
 def _now():
     return time.time()
-
-
-def theme_slug(name):
-    slug = re.sub(r"[^a-z0-9]+", "-", str(name).lower()).strip("-")[:SLUG_MAX].strip("-")
-    return slug or None
-
-
-def theme_file_name(name):
-    slug = theme_slug(name)
-    if slug is None:
-        return None
-    digest = hashlib.sha1(str(name).encode("utf-8")).hexdigest()[:6]
-    return f"{FILE_PREFIX}{slug}-{digest}.yaml"
 
 
 def _variables(value):
@@ -72,16 +67,47 @@ def _modes(value):
     return value
 
 
+def _stale_catalog(data):
+    cached = data.get("catalog_cache")
+    if cached is not None and _now() < cached[0] + CATALOG_STALE_SECONDS:
+        return cached[1]
+    return None
+
+
+async def _fill_catalog(hass, data):
+    try:
+        result = await load_catalog(lambda: hacs_loader(hass), lambda: public_loader(hass))
+    except Exception as err:
+        data["catalog_failure"] = _now() + CATALOG_FAILURE_TTL
+        stale = _stale_catalog(data)
+        if stale is not None:
+            return stale
+        raise CatalogError("Theme catalog unavailable") from err
+    finally:
+        data.pop("catalog_inflight", None)
+    data["catalog_cache"] = (_now() + CATALOG_TTL, result)
+    return result
+
+
 async def load_catalog_for_hass(hass):
     data = hass.data.get(DOMAIN)
-    cached = data.get("catalog_cache") if data else None
+    if data is None:
+        return await load_catalog(lambda: hacs_loader(hass), lambda: public_loader(hass))
+    cached = data.get("catalog_cache")
     if cached is not None and _now() < cached[0]:
         return cached[1]
-    result = await load_catalog(lambda: hacs_loader(hass), lambda: public_loader(hass))
-    data = hass.data.get(DOMAIN)
-    if data is not None:
-        data["catalog_cache"] = (_now() + CATALOG_TTL, result)
-    return result
+    failed_until = data.get("catalog_failure")
+    if failed_until is not None and _now() < failed_until:
+        stale = _stale_catalog(data)
+        if stale is not None:
+            return stale
+        raise CatalogError("Theme catalog unavailable")
+    task = data.get("catalog_inflight")
+    if task is None:
+        task = asyncio.ensure_future(_fill_catalog(hass, data))
+        task.add_done_callback(lambda t: t.cancelled() or t.exception())
+        data["catalog_inflight"] = task
+    return await asyncio.shield(task)
 
 
 def _data(hass):
@@ -274,37 +300,6 @@ def ws_subscribe(hass, connection, msg):
     connection.send_result(msg_id)
 
 
-def _write_theme(directory, file_name, text):
-    os.makedirs(directory, exist_ok=True)
-    target = os.path.join(directory, file_name)
-    temp = f"{target}.{uuid.uuid4().hex}.tmp"
-    try:
-        with open(temp, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        os.replace(temp, target)
-    finally:
-        try:
-            os.remove(temp)
-        except OSError:
-            pass
-
-
-def _build_theme_text(name, variables, modes):
-    for block in modes.values():
-        if not isinstance(block, dict):
-            raise ThemeError("Theme modes must be mappings of variables")
-    try:
-        parsed = parse_themes(theme_to_yaml(name, variables, modes))
-    except (TypeError, ValueError, AttributeError) as err:
-        if isinstance(err, ThemeError):
-            raise
-        raise ThemeError("Theme variables are not valid") from err
-    clean = parsed.get(name)
-    if clean is None:
-        raise ThemeError("No theme found in this file")
-    return theme_to_yaml(name, clean["vars"], clean.get("modes"))
-
-
 @websocket_api.require_admin
 @websocket_api.websocket_command(
     {
@@ -319,21 +314,50 @@ async def ws_save_theme(hass, connection, msg):
     if _loaded(hass, connection, msg) is None:
         return
     name = msg["name"]
+    if is_reserved(name):
+        connection.send_error(msg["id"], "reserved_name", "This theme name is reserved")
+        return
     file_name = theme_file_name(name)
     try:
         if file_name is None:
             raise ThemeError("Theme name has no usable characters")
+        uploads = hass.config.path("www", UPLOAD_DIR_NAME)
+        await hass.async_add_executor_job(check_backgrounds, msg["variables"], msg["modes"], uploads)
         text = await hass.async_add_executor_job(_build_theme_text, name, msg["variables"], msg["modes"])
+    except DroppedValuesError as err:
+        connection.send_error(msg["id"], "invalid_value", str(err))
+        return
     except ThemeError as err:
         connection.send_error(msg["id"], "invalid_theme", str(err))
         return
+    directory = hass.config.path("themes")
+    files = await hass.async_add_executor_job(files_defining, directory, name)
+    own = file_name in files
+    existed, defined = await hass.async_add_executor_job(inspect_target, directory, file_name)
+    installed = {key.casefold() for key in hass.data.get(DATA_THEMES) or {}}
+    foreign_name = any(item.casefold() != name.casefold() for item in defined)
+    defined_here = any(item.casefold() == name.casefold() for item in defined)
+    unscanned = getattr(files, "overflow", False) and not own and not defined_here
+    if (
+        any(item != file_name for item in files)
+        or foreign_name
+        or unscanned
+        or (name.casefold() in installed and not own)
+    ):
+        connection.send_error(msg["id"], "name_exists", "A theme with this name already exists")
+        return
+    previous = await hass.async_add_executor_job(read_previous, directory, file_name)
     try:
-        await hass.async_add_executor_job(_write_theme, hass.config.path("themes"), file_name, text)
+        await hass.async_add_executor_job(_write_theme, directory, file_name, text)
         await hass.services.async_call("frontend", "reload_themes", blocking=True)
     except Exception:
+        await hass.async_add_executor_job(restore, directory, file_name, previous)
         connection.send_error(msg["id"], "save_failed", "The theme could not be saved")
         return
-    connection.send_result(msg["id"], {"file": file_name})
+    result = {"file": file_name}
+    if existed:
+        result["overwrote"] = True
+    connection.send_result(msg["id"], result)
 
 
 COMMANDS = (
@@ -350,5 +374,6 @@ COMMANDS = (
 
 
 def async_register_commands(hass: HomeAssistant):
+    record_www_state(hass)
     for command in COMMANDS:
         websocket_api.async_register_command(hass, command)

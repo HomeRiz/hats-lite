@@ -152,9 +152,10 @@ def test_enhanced_accepted_values(good):
 
 
 def test_deep_nesting_recursion_error():
-    deeply_nested = "a: " + "{a: " * 5000
-    with pytest.raises(ThemeError, match="too deeply nested"):
-        parse_themes(deeply_nested)
+    with pytest.raises(ThemeError):
+        parse_themes("a: " + "{a: " * 5000)
+    with pytest.raises(ThemeError):
+        parse_themes("a: " + "{a: " * 5000 + "1" + "}" * 5000)
 
 
 def test_size_cap_is_bytes():
@@ -253,3 +254,88 @@ def test_performance_large_valid_url():
     elapsed = time.perf_counter() - start
     assert result is not None
     assert elapsed < 2.0
+
+
+def test_entries_with_unsupported_names_are_skipped_not_fatal():
+    text = (
+        "'(DO NOT USE/MODIFY)=== helper':\n  x: '#000000'\n"
+        "Good Theme:\n  primary-color: '#112233'\n"
+        "'LCARS Picard [Blue Accent]':\n  primary-color: '#445566'\n"
+    )
+    themes = parse_themes(text)
+    assert list(themes) == ["Good Theme", "LCARS Picard [Blue Accent]"]
+
+
+def test_a_file_with_only_unsupported_names_has_no_theme():
+    with pytest.raises(ThemeError):
+        parse_themes("'a/b':\n  primary-color: '#112233'\n")
+
+
+def test_huge_integer_is_an_invalid_value_not_a_crash():
+    assert sanitize_value(10**5000) is None
+
+
+def test_huge_integer_in_yaml_is_a_theme_error():
+    with pytest.raises(ThemeError):
+        parse_themes("T:\n  a: " + "9" * 5000 + "\n")
+
+
+@pytest.mark.parametrize("bad", ["\\ffffff", "\\110000", "x\\110000y", "url(\\ffffff)"])
+def test_out_of_range_css_escapes_are_invalid_values(bad):
+    assert sanitize_value(bad) is None
+
+
+def test_escape_error_is_a_theme_error():
+    from custom_components.hats_lite.theme_sanitizer import _normalize_value
+
+    with pytest.raises(ThemeError):
+        _normalize_value("\\110000")
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "red\\3b display:none",
+        "red\\7d body\\7b x",
+        "red&semi; x",
+        "url(a.png)\\3b x",
+    ],
+)
+def test_special_characters_are_checked_after_unescaping(bad):
+    assert sanitize_value(bad, key="background") is None
+
+
+def test_escaped_special_characters_allowed_for_card_mod():
+    assert sanitize_value("a\\7b b", key="card-mod-card") == "a\\7b b"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "url(/local/../secret.png)",
+        "url(/local/a/../../b.png)",
+        "url('/local/%2e%2e/x.png')",
+        "url(/local/a.png);color:red",
+        "url(./a.png)",
+        "url(../a.png)",
+        "url(//evil.test/a.png)",
+        "url(/api/states)",
+        "url(\\2f local/..\\2f x.png)",
+    ],
+)
+def test_url_forms_outside_the_allowlist_are_rejected(bad):
+    assert sanitize_value(bad) is None
+
+
+@pytest.mark.parametrize(
+    "good",
+    [
+        "url('/local/hats_lite/ab12.png')",
+        "center / cover no-repeat fixed url('/local/x.png')",
+        "url(/local/a.png) center / cover no-repeat",
+        "url(/local/a.png), url(https://example.test/b.jpg)",
+        "linear-gradient(rgba(0,0,0,.5), rgba(0,0,0,.5)), url('/local/a.png')",
+    ],
+)
+def test_legitimate_url_forms_remain_accepted(good):
+    assert sanitize_value(good) == good

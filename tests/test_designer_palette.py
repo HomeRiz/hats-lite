@@ -47,3 +47,39 @@ def test_designer_output_survives_the_sanitizer():
     assert parsed["vars"] == DARK
     assert parsed["modes"]["dark"] == DARK
     assert parsed["modes"]["light"] == LIGHT
+
+
+GENERATED = {
+    "ha-card-background": "rgba(25, 48, 62, 0.612)",
+    "sidebar-selected-background-color": "rgba(3,169,244,0.183)",
+    "divider-color": "rgba(255,255,255,0.2)",
+    "ha-card-backdrop-filter": "blur(14px)",
+    "ha-card-border-radius": "50%",
+    "primary-color": "#1a2B3c",
+    "lovelace-background": "center / cover no-repeat fixed url('/local/hats_lite/" + "a" * 32 + ".png')",
+    "wide-gradient": "linear-gradient(135deg, rgba(0,0,0,0.000) 0%, rgba(12,34,56,0.999) 100%)",
+}
+
+
+def test_generator_shaped_values_survive_the_sanitizer():
+    parsed = parse_themes(theme_to_yaml("Gen", GENERATED, {"dark": GENERATED, "light": GENERATED}))["Gen"]
+    assert parsed["vars"] == GENERATED
+    assert parsed["modes"]["dark"] == GENERATED
+    assert parsed["modes"]["light"] == GENERATED
+
+
+def test_fixture_values_round_trip():
+    import json
+    import pathlib
+
+    import pytest
+
+    path = pathlib.Path(__file__).parent / "fixtures" / "designer_vars.json"
+    if not path.exists():
+        pytest.skip("designer_vars.json fixture is absent")
+    entries = json.loads(path.read_text())
+    assert entries
+    for entry in entries:
+        variables = entry["vars"]
+        parsed = parse_themes(theme_to_yaml("Fixture", variables))["Fixture"]["vars"]
+        assert parsed == variables, entry["name"]
