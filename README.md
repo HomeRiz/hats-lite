@@ -1,16 +1,64 @@
 # HATS Lite
 
-A Home Assistant custom integration for building, previewing and applying themes from a panel in the sidebar.
+HATS Lite is a Home Assistant integration that adds one panel to the sidebar for browsing, previewing and applying themes. It shows a theme on your own dashboard next to the one you use now, and it lets you try a theme with an automatic way back.
+
+## What it does
+
+- **Browse** the theme catalog. If HACS is installed the list comes from HACS, otherwise from the public HACS theme catalog. Every card shows the repository, description, stars and whether the theme is installed.
+- **Preview** a theme on your real dashboard. Pick a dashboard and a view, drag the divider to compare the current theme with the candidate, switch between desktop, tablet and phone widths, between normal and compact density, and between dark and light.
+- **Apply** a theme that is already installed, or **try** it for 30 seconds.
+- **Design** a simple theme with main and accent color, corner radius, glass blur, card tint and a background image, then save it as a theme file. Uploading a background and saving a theme need an administrator account.
+
+## The safe try
+
+Trying a theme applies it, and 30 seconds later a large confirmation appears with Keep and Revert buttons and a visible countdown. If you do nothing for 5 more seconds the previous theme comes back. The confirmation does not use the theme being tried, so it stays readable even when the theme is broken.
+
+The server keeps the trial and reverts it by itself. If you close the tab or lose the connection, the previous theme is restored the next time Home Assistant opens in that browser.
+
+## Requirements
+
+- Home Assistant 2025.7.0 or newer.
+- HACS is optional. Without it the panel can preview any theme in the public catalog, but a theme can only be applied after it is installed in your `themes` folder.
+- `frontend: themes:` configured in Home Assistant, as for any theme.
 
 ## Installation
 
-1. In HACS, add this repository as a custom repository of type Integration.
-2. Download HATS Lite and restart Home Assistant.
-3. Go to Settings, Devices and services, and add the HATS Lite integration.
+1. In HACS, open the menu and choose Custom repositories.
+2. Add this repository with the type Integration.
+3. Download HATS Lite and restart Home Assistant.
+4. Go to Settings, Devices and services, add the integration HATS Lite.
+5. Open Themes in the sidebar.
 
-## Status
+While this repository is private, HACS needs a GitHub token that can read it.
 
-This is an early version. The panel and theme tools are still being built.
+## Limits
+
+- The preview shows color, shape and glass settings. Effects that depend on card-mod or UIX rules are not rendered in the preview.
+- Preview cards are read only. Buttons and actions on them do nothing.
+- A card type that is not installed is shown as a labelled placeholder.
+- The preview needs the Lovelace module of Home Assistant. It is loaded on demand, which relies on a Home Assistant internal that may change between versions.
+- Only one trial at a time per user.
+
+## Development
+
+```
+npm ci
+npm test
+npm run typecheck
+npm run build
+python -m pytest
+```
+
+The bundles in `custom_components/hats_lite/frontend/` are built from `frontend-src/` and committed. A rebuild must not change them.
+
+The gallery thumbnails are pre-rendered into a sprite atlas under `custom_components/hats_lite/frontend/thumbs/`, so the gallery does not fetch every theme to draw it. Refresh it with:
+
+```
+python scripts/thumbs_collect.py OUT_DIR --limit 104 --concurrency 3
+node scripts/thumbs-render.mjs OUT_DIR
+```
+
+HATS Lite hosts nothing and never copies unlicensed material: with the default `--backgrounds licensed`, wallpaper variables are rendered only for themes whose repository license is permissive (MIT, Apache-2.0, BSD, ISC, Unlicense, CC0), and are dropped from the atlas otherwise. The weekly Thumbnails workflow opens a pull request with the result.
 
 ## License
 

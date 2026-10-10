@@ -1,0 +1,39 @@
+name: Thumbnails
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  thumbnails:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce
+        id: chrome
+      - run: python scripts/thumbs_collect.py "$RUNNER_TEMP/thumbs"
+      - run: node scripts/thumbs-render.mjs "$RUNNER_TEMP/thumbs"
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+      - uses: peter-evans/create-pull-request@84ae59a2cdc2258d6fa0732dd66352dddae2a412
+        with:
+          sign-commits: true
+          branch: thumbs/update
+          commit-message: Refresh the theme thumbnails
+          title: Refresh the theme thumbnails
+          body: Rebuilt the theme thumbnail atlas from the public HACS theme list.
+          add-paths: custom_components/hats_lite/frontend/thumbs
