@@ -1,3 +1,5 @@
+import { buildPalette } from "./designerPalette";
+
 export type DesignerInput = {
   main: string;
   accent: string;
@@ -51,6 +53,7 @@ export function buildDesignerVars(input: DesignerInput): Record<string, string> 
   const tint = clamp(input.tint, 2, 60);
   const alpha = input.mode === "dark" ? tint / 100 : 0.4 + tint / 50;
   const vars: Record<string, string> = {
+    ...buildPalette(main, accent, input.mode),
     "primary-color": main,
     "accent-color": accent,
     "ha-card-border-radius": `${radius}px`,

@@ -69,3 +69,39 @@ describe("applyScoped", () => {
     expect(document.documentElement.getAttribute("style")).toBeNull();
   });
 });
+
+describe("background attachment", () => {
+  it("turns a fixed lovelace background into a scrolling one inside the preview", () => {
+    const el = document.createElement("div");
+    applyScoped(el, {
+      "lovelace-background": "center / cover no-repeat fixed url('/local/hats_lite/a.png')",
+      "primary-color": "#112233",
+    });
+    const value = el.style.getPropertyValue("--lovelace-background");
+    expect(value).toContain("scroll");
+    expect(value).not.toMatch(/\bfixed\b/);
+    expect(value).toContain("url('/local/hats_lite/a.png')");
+    expect(el.style.getPropertyValue("--primary-color")).toBe("#112233");
+  });
+
+  it("leaves backgrounds without fixed untouched", () => {
+    const el = document.createElement("div");
+    applyScoped(el, { "lovelace-background": "center / cover no-repeat url('/local/a.png')" });
+    expect(el.style.getPropertyValue("--lovelace-background")).toBe(
+      "center / cover no-repeat url('/local/a.png')",
+    );
+  });
+});
+
+describe("background indirection", () => {
+  it("also turns fixed into scroll in the variable a theme points lovelace-background at", () => {
+    const el = document.createElement("div");
+    applyScoped(el, {
+      "lovelace-background": "var(--background-image)",
+      "background-image": "center / cover no-repeat fixed url('/local/hats_lite/b.png')",
+    });
+    expect(el.style.getPropertyValue("--lovelace-background")).toBe("var(--background-image)");
+    expect(el.style.getPropertyValue("--background-image")).not.toMatch(/\bfixed\b/);
+    expect(el.style.getPropertyValue("--background-image")).toContain("scroll");
+  });
+});

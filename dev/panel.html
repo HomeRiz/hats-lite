@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HATS Lite panel dev</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #fafafa;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      .dev-note {
+        margin: 0;
+        padding: 8px 16px;
+        font-size: 13px;
+        color: #555;
+        background: #fff;
+        border-bottom: 1px solid #ddd;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <p class="dev-note">
+      Build first: <code>npm run build</code> writes the panel bundle to
+      <code>custom_components/hats_lite/frontend/hats-lite-panel.js</code>. Then bundle the mock with
+      <code>npx esbuild dev/mock-hass.ts --bundle --outfile=dev/mock-hass.js --format=esm</code>
+      and serve this folder over HTTP.
+    </p>
+    <hats-lite-panel id="panel"></hats-lite-panel>
+    <script type="module">
+      const mock = await import("./mock-hass.js");
+      await import("../custom_components/hats_lite/frontend/hats-lite-panel.js");
+      mock.registerFakeCards();
+      const hass = mock.createMockHass();
+      const panel = document.getElementById("panel");
+      panel.hass = hass;
+      panel.narrow = new URLSearchParams(location.search).has("narrow");
+      window.hatsMockHass = hass;
+    </script>
+  </body>
+</html>

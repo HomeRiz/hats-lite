@@ -34,8 +34,17 @@ export function toStyleText(vars: Record<string, string>): string {
     .join("");
 }
 
+const BACKGROUND_KEYS = ["lovelace-background", "background-image"];
+
+function scopedValue(key: string, value: string): string {
+  if (BACKGROUND_KEYS.includes(key) || /url\(/i.test(value)) {
+    return value.replace(/\bfixed\b/gi, "scroll");
+  }
+  return value;
+}
+
 export function applyScoped(el: HTMLElement, vars: Record<string, string>): void {
   for (const [key, value] of safeEntries(vars)) {
-    el.style.setProperty(`--${key}`, value);
+    el.style.setProperty(`--${key}`, scopedValue(key, value));
   }
 }
