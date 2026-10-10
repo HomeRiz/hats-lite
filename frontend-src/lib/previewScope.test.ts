@@ -105,3 +105,36 @@ describe("background indirection", () => {
     expect(el.style.getPropertyValue("--background-image")).toContain("scroll");
   });
 });
+
+describe("fixed attachment rewrite", () => {
+  const set = (vars: Record<string, string>) => {
+    const el = document.createElement("div");
+    applyScoped(el, vars);
+    return (key: string) => el.style.getPropertyValue(`--${key}`);
+  };
+
+  it("leaves a path segment named fixed inside url alone", () => {
+    const get = set({
+      "lovelace-background": "center / cover url('/local/fixed/bg.png') fixed",
+      "other-image": "url(/local/fixed/x.png)",
+    });
+    expect(get("lovelace-background")).toBe("center / cover url('/local/fixed/bg.png') scroll");
+    expect(get("other-image")).toBe("url(/local/fixed/x.png)");
+  });
+
+  it("only rewrites a standalone token", () => {
+    const get = set({ "lovelace-background": "url(a.png) no-repeat fixed-ish, fixed center" });
+    expect(get("lovelace-background")).toBe("url(a.png) no-repeat fixed-ish, scroll center");
+  });
+
+  it("rewrites a custom property made only of attachment keywords", () => {
+    const get = set({
+      "bg-attachment": "fixed",
+      "bg-list": "fixed, scroll, fixed",
+      "font-note": "fixed width",
+    });
+    expect(get("bg-attachment")).toBe("scroll");
+    expect(get("bg-list")).toBe("scroll, scroll, scroll");
+    expect(get("font-note")).toBe("fixed width");
+  });
+});

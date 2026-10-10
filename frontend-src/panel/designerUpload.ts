@@ -4,9 +4,10 @@ import {
   BACKGROUND_UPLOAD_URL,
   type PanelHass,
 } from "./contract";
+import { isUploadUrl } from "../lib/designer";
 import { stringsDesigner } from "./strings.designer";
 
-export type UploadResult = { url: string } | { error: string };
+export type UploadResult = { url: string; needsRestart: boolean } | { error: string };
 
 export function messageFrom(value: unknown, fallback: string): string {
   if (value && typeof value === "object" && "message" in value) {
@@ -46,7 +47,7 @@ export async function uploadBackground(hass: PanelHass, file: File): Promise<Upl
     return { error: stringsDesigner.uploadFailed };
   }
   if (!response.ok) return { error: messageFrom(body, stringsDesigner.uploadFailed) };
-  const url = (body as { url?: unknown }).url;
-  if (typeof url !== "string") return { error: stringsDesigner.uploadFailed };
-  return { url };
+  const { url, needs_restart: restart } = body as { url?: unknown; needs_restart?: unknown };
+  if (!isUploadUrl(url)) return { error: stringsDesigner.uploadFailed };
+  return { url, needsRestart: restart === true };
 }

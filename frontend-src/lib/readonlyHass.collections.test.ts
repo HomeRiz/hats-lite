@@ -129,9 +129,13 @@ describe("object keys through views", () => {
 });
 
 type AlgebraSet = Set<Item> & {
-  union(other: Set<Item>): Set<Item>;
+  union(other: unknown): Set<Item>;
   intersection(other: unknown): Set<Item>;
+  difference(other: unknown): Set<Item>;
+  symmetricDifference(other: unknown): Set<Item>;
   isSubsetOf(other: unknown): boolean;
+  isSupersetOf(other: unknown): boolean;
+  isDisjointFrom(other: unknown): boolean;
 };
 
 describe("raw object leaks through helpers", () => {
@@ -155,7 +159,7 @@ describe("raw object leaks through helpers", () => {
     expect(() => out.add({ state: "x" })).toThrow();
   });
 
-  it("set algebra never hands raw members to a page supplied set-like", () => {
+  it("set algebra accepts a page supplied set-like and hands it only views", () => {
     const item = { state: "on" };
     const real = new Set<Item>([item]);
     const view = makeReadOnlyHass({ s: real } as never) as unknown as { s: AlgebraSet };
@@ -170,9 +174,67 @@ describe("raw object leaks through helpers", () => {
         return [][Symbol.iterator]();
       },
     };
-    expect(() => view.s.isSubsetOf(setLike as never)).toThrow();
-    expect(() => view.s.intersection(setLike as never)).toThrow();
-    expect(leaked).toHaveLength(0);
+    expect(view.s.isSubsetOf(setLike as never)).toBe(true);
+    expect([...view.s.intersection(setLike as never)]).toHaveLength(1);
+    expect(leaked.length).toBeGreaterThan(0);
+    for (const value of leaked) {
+      expect(value).not.toBe(item);
+      expect(Reflect.set(value as object, "state", "off")).toBe(false);
+    }
+    expect(item.state).toBe("on");
+  });
+
+  it("set algebra rejects arguments that are not set-like", () => {
+    const view = makeReadOnlyHass({ s: new Set<Item>() } as never) as unknown as { s: AlgebraSet };
+    expect(() => view.s.union({ size: 1 } as never)).toThrow(TypeError);
+    expect(() => view.s.union(null as never)).toThrow(TypeError);
+  });
+
+  it("set algebra accepts Map arguments through their keys", () => {
+    const a = { n: 1 };
+    const b = { n: 2 };
+    const view = makeReadOnlyHass({ s: new Set<Item>([a as never, b as never]) } as never) as unknown as {
+      s: AlgebraSet;
+    };
+    const map = new Map<unknown, number>([[a, 1]]);
+    expect([...view.s.intersection(map as never)]).toHaveLength(1);
+    expect([...view.s.difference(map as never)]).toHaveLength(1);
+    expect([...view.s.union(map as never)]).toHaveLength(2);
+    expect([...view.s.symmetricDifference(map as never)]).toHaveLength(1);
+    expect(view.s.isSubsetOf(map as never)).toBe(false);
+    expect(view.s.isSupersetOf(map as never)).toBe(true);
+    expect(view.s.isDisjointFrom(map as never)).toBe(false);
+  });
+
+  it("set algebra works on a set-like that lists keys", () => {
+    const a = { n: 1 };
+    const view = makeReadOnlyHass({ s: new Set<Item>([a as never]) } as never) as unknown as {
+      s: AlgebraSet;
+    };
+    const like = { size: 1, has: (v: unknown) => v !== a && false, keys: () => new Set([{ n: 9 }]).values() };
+    expect([...view.s.union(like as never)]).toHaveLength(2);
+    expect(view.s.isSupersetOf(like as never)).toBe(false);
+    expect(view.s.isDisjointFrom(like as never)).toBe(true);
+  });
+
+  it("set algebra ignores patched Set.prototype functions", () => {
+    const seen: unknown[] = [];
+    const real = new Set([{ n: 1 }]);
+    const view = makeReadOnlyHass({ s: real } as never) as unknown as { s: AlgebraSet };
+    const original = Set.prototype.has;
+    Set.prototype.has = function patched(this: Set<unknown>, value: unknown) {
+      seen.push(this);
+      return original.call(this, value);
+    };
+    try {
+      view.s.isSubsetOf(new Set());
+      view.s.has({ n: 1 } as never);
+      expect(view.s.size).toBe(1);
+      view.s.intersection(new Set());
+    } finally {
+      Set.prototype.has = original;
+    }
+    expect(seen).not.toContain(real);
   });
 
   it("set algebra still accepts real Sets and views", () => {

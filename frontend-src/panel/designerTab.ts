@@ -1,5 +1,6 @@
 import { LitElement, html, nothing, type PropertyValues, type TemplateResult } from "lit";
 import { buildDesignerVars, type DesignerInput } from "../lib/designer";
+import { effectiveTintPercent, tintFromPosition, tintLimit } from "../lib/designerPalette";
 import { callWS } from "../lib/ws";
 import {
   EVENT_THEME_SAVED,
@@ -9,34 +10,32 @@ import {
   type PreviewMode,
   type ThemeSavedDetail,
 } from "./contract";
+import { renderColorRow, renderRange } from "./designerControls";
 import { designerStyles } from "./designerStyles";
-import { messageFrom, uploadBackground, uploadProblem } from "./designerUpload";
+import {
+  errorInfo,
+  nameProblem,
+  restartReminder,
+  saveErrorMessage,
+  saveSuccessMessage,
+  warningMessages,
+  type ErrorField,
+} from "./designerSave";
+import { uploadBackground, uploadProblem } from "./designerUpload";
 import "./browseThumb";
 import "./preview";
 import { stringsDesigner } from "./strings.designer";
 
 type Background = NonNullable<DesignerInput["background"]>;
-type ErrorField = "" | "color" | "background";
-type SliderKey = "radius" | "glassBlur" | "tint";
+type SliderKey = "radius" | "glassBlur";
 type Modes = { dark: Record<string, string>; light: Record<string, string> };
 
 const PRESETS: readonly { label: string; value: string }[] = [];
 const CONTROL_KEYS = ["main", "accent", "radius", "glassBlur", "tint", "mode", "background"] as const;
-const THEME_NAME = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,59}$/;
 const SLIDERS: Record<SliderKey, { label: string; min: number; max: number; unit: string }> = {
   radius: { label: stringsDesigner.radius, min: 0, max: 48, unit: "px" },
   glassBlur: { label: stringsDesigner.blur, min: 0, max: 40, unit: "px" },
-  tint: { label: stringsDesigner.tint, min: 2, max: 60, unit: "%" },
 };
-
-function errorInfo(err: unknown): { field: ErrorField; message: string } {
-  const text = err instanceof Error ? err.message : "";
-  if (text === "Invalid color") return { field: "color", message: stringsDesigner.invalidColor };
-  if (text === "Invalid background") {
-    return { field: "background", message: stringsDesigner.invalidBackground };
-  }
-  return { field: "color", message: stringsDesigner.invalidInput };
-}
 
 export class HatsLiteDesigner extends LitElement {
   static properties = {
@@ -54,6 +53,7 @@ export class HatsLiteDesigner extends LitElement {
     themeName: { state: true },
     uploading: { state: true },
     uploadError: { state: true },
+    uploadNotice: { state: true },
     saving: { state: true },
     saveMessage: { state: true },
     saveFailed: { state: true },
@@ -68,7 +68,7 @@ export class HatsLiteDesigner extends LitElement {
   accent = "#ff9800";
   radius = 12;
   glassBlur = 10;
-  tint = 20;
+  tint = 30;
   mode: PreviewMode = "dark";
   background: Background = { kind: "none" };
   candidate?: PreviewCandidate;
@@ -77,6 +77,7 @@ export class HatsLiteDesigner extends LitElement {
   themeName = "";
   uploading = false;
   uploadError = "";
+  uploadNotice = "";
   saving = false;
   saveMessage = "";
   saveFailed = false;
@@ -97,10 +98,12 @@ export class HatsLiteDesigner extends LitElement {
             ${this.renderColor("main", stringsDesigner.mainColor)}
             ${this.renderColor("accent", stringsDesigner.accentColor)}
             ${this.errorField === "color" ? html`<p class="error" role="alert">${this.errorMessage}</p>` : nothing}
+            ${this.warnings().map((text) => html`<p class="hint" data-warning>${text}</p>`)}
           </section>
           <section class="group">
             <h3>${stringsDesigner.shape}</h3>
             ${(Object.keys(SLIDERS) as SliderKey[]).map((key) => this.renderSlider(key))}
+            ${this.renderTint()}
           </section>
           <section class="group">
             <h3>${stringsDesigner.background}</h3>
@@ -149,31 +152,41 @@ export class HatsLiteDesigner extends LitElement {
   }
 
   private renderColor(key: "main" | "accent", label: string): TemplateResult {
-    return html`
-      <label class="color-row">
-        <input type="color" data-field=${key} .value=${this[key]}
-          @input=${(event: Event) => this.setText(key, event)} />
-        <span class="color-text">
-          <span>${label}</span>
-          <span class="hex" data-readout=${key}>${this[key]}</span>
-        </span>
-      </label>
-    `;
+    return renderColorRow(key, label, this[key], (event) => this.setText(key, event));
   }
 
   private renderSlider(key: SliderKey): TemplateResult {
     const spec = SLIDERS[key];
-    return html`
-      <label class="range">
-        <span class="range-head">
-          <span>${spec.label}</span>
-          <span class="range-value">${this[key]}${spec.unit}</span>
-        </span>
-        <input type="range" min=${spec.min} max=${spec.max} step="1" data-field=${key}
-          .value=${String(this[key])}
-          @input=${(event: Event) => this.setNumber(key, event)} />
-      </label>
-    `;
+    return renderRange({
+      label: spec.label,
+      readout: `${this[key]}${spec.unit}`,
+      field: key,
+      min: spec.min,
+      max: spec.max,
+      value: this[key],
+      onInput: (event) => this.setNumber(key, event),
+    });
+  }
+
+  private renderTint(): TemplateResult {
+    const percent = effectiveTintPercent(this.main, this.mode, this.tintValue(this.mode));
+    return renderRange({
+      label: stringsDesigner.tint,
+      readout: `${percent}%`,
+      field: "tint",
+      min: 0,
+      max: 100,
+      value: this.tint,
+      onInput: (event) => this.setTint(event),
+    });
+  }
+
+  private tintValue(mode: PreviewMode): number {
+    return tintFromPosition(this.tint, tintLimit(this.main, mode));
+  }
+
+  private setTint(event: Event): void {
+    this.tint = Number((event.target as HTMLInputElement).value);
   }
 
   private renderUpload(): TemplateResult {
@@ -192,6 +205,7 @@ export class HatsLiteDesigner extends LitElement {
         ?disabled=${this.uploading}
         @change=${(event: Event) => this.onFile(event)} />
       ${this.uploadError ? html`<p class="error" role="alert">${this.uploadError}</p>` : nothing}
+      ${this.uploadNotice ? html`<p class="hint" role="status" data-notice="restart">${this.uploadNotice}</p>` : nothing}
     `;
   }
 
@@ -223,10 +237,14 @@ export class HatsLiteDesigner extends LitElement {
       accent: this.accent,
       radius: this.radius,
       blur: this.glassBlur,
-      tint: this.tint,
+      tint: this.tintValue(mode),
       background: this.background,
       mode,
     };
+  }
+
+  private warnings(): string[] {
+    return warningMessages(this.designerInput(this.mode));
   }
 
   private rebuild(): void {
@@ -290,6 +308,7 @@ export class HatsLiteDesigner extends LitElement {
 
   private setBackground(background: Background): void {
     this.background = background;
+    this.uploadNotice = "";
   }
 
   private setName(event: Event): void {
@@ -313,10 +332,14 @@ export class HatsLiteDesigner extends LitElement {
     }
     this.uploading = true;
     this.uploadError = "";
+    this.uploadNotice = "";
     try {
       const result = await uploadBackground(hass, file);
       if ("error" in result) this.uploadError = result.error;
-      else this.background = { kind: "upload", value: result.url };
+      else {
+        this.background = { kind: "upload", value: result.url };
+        if (result.needsRestart) this.uploadNotice = stringsDesigner.needsRestart;
+      }
     } finally {
       this.uploading = false;
       if (input) input.value = "";
@@ -327,9 +350,10 @@ export class HatsLiteDesigner extends LitElement {
     const hass = this.hass;
     if (!hass) return;
     const name = this.themeName.trim();
-    if (!THEME_NAME.test(name)) {
+    const problem = nameProblem(name);
+    if (problem) {
       this.saveFailed = true;
-      this.saveMessage = stringsDesigner.nameInvalid;
+      this.saveMessage = problem;
       return;
     }
     const modes = this.buildModes();
@@ -337,7 +361,7 @@ export class HatsLiteDesigner extends LitElement {
     this.saving = true;
     this.saveMessage = "";
     try {
-      await callWS(hass, { type: "hats_lite/save_theme", name, variables: modes.dark, modes });
+      const response = await callWS(hass, { type: "hats_lite/save_theme", name, variables: modes.dark, modes });
       this.dispatchEvent(
         new CustomEvent<ThemeSavedDetail>(EVENT_THEME_SAVED, {
           bubbles: true,
@@ -346,10 +370,10 @@ export class HatsLiteDesigner extends LitElement {
         }),
       );
       this.saveFailed = false;
-      this.saveMessage = stringsDesigner.saved;
+      this.saveMessage = restartReminder(saveSuccessMessage(response), this.background);
     } catch (err) {
       this.saveFailed = true;
-      this.saveMessage = messageFrom(err, stringsDesigner.saveFailed);
+      this.saveMessage = saveErrorMessage(err);
     } finally {
       this.saving = false;
     }

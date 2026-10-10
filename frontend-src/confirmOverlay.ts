@@ -1,3 +1,5 @@
+import { createGate } from "./overlayGate";
+
 export const HOST_STYLES: Array<[string, string]> = [
   ["all", "initial"],
   ["display", "flex"],
@@ -112,6 +114,10 @@ button:focus-visible {
 `;
 
 const HOST_ATTRIBUTES = ["style", "hidden", "class", "popover", "inert"];
+const ROOT_ATTRIBUTES = ["style", "class"];
+const ROOT_PROPS = ["opacity", "filter", "transform", "zoom"];
+
+const nativeAttachShadow = Element.prototype.attachShadow;
 
 type PopoverHost = HTMLElement & { showPopover?: () => void; hidePopover?: () => void };
 
@@ -134,8 +140,13 @@ export function createOverlay(options: OverlayOptions) {
   let keepButton: HTMLButtonElement | null = null;
   let hostObserver: MutationObserver | null = null;
   let rootObserver: MutationObserver | null = null;
+  let styleObserver: MutationObserver | null = null;
+  let dialogObserver: MutationObserver | null = null;
+  const savedRootStyles = new Map<string, { value: string; priority: string }>();
   let visible = false;
   let popoverShown = false;
+  const reassertGate = createGate(reassert);
+  const promoteGate = createGate(repromote);
 
   function fromUser(event: Event, action: () => void): void {
     if (trustedOnly && !event.isTrusted) return;
@@ -145,7 +156,7 @@ export function createOverlay(options: OverlayOptions) {
   function build(): PopoverHost {
     const el: PopoverHost = document.createElement("div");
     el.setAttribute("data-hats-lite-confirm", "");
-    root = el.attachShadow({ mode: "closed" });
+    root = nativeAttachShadow.call(el, { mode: "closed" });
     const style = document.createElement("style");
     style.textContent = STYLES;
     const box = document.createElement("div");
@@ -226,18 +237,106 @@ export function createOverlay(options: OverlayOptions) {
     }
   }
 
+  function restoreRootStyles(): void {
+    const style = document.documentElement.style;
+    for (const prop of ROOT_PROPS) {
+      const value = style.getPropertyValue(prop);
+      if (value === "") continue;
+      if (!savedRootStyles.has(prop)) {
+        savedRootStyles.set(prop, { value, priority: style.getPropertyPriority(prop) });
+      }
+      style.removeProperty(prop);
+    }
+  }
+
+  function giveBackRootStyles(): void {
+    const style = document.documentElement.style;
+    for (const [prop, saved] of savedRootStyles) style.setProperty(prop, saved.value, saved.priority);
+    savedRootStyles.clear();
+  }
+
+  function reassert(): void {
+    if (!visible || !host) return;
+    guardRoot();
+    guardHost();
+    restoreRootStyles();
+  }
+
+  function repromote(): void {
+    if (!visible || !host || typeof host.showPopover !== "function") return;
+    hostObserver?.disconnect();
+    try {
+      host.hidePopover?.();
+    } catch {
+      popoverShown = false;
+    }
+    popoverShown = false;
+    applyHostState();
+    observeHost();
+  }
+
+  function onToggle(event: Event): void {
+    if (!visible || !host) return;
+    const state = (event as Event & { newState?: string }).newState;
+    if (state === "closed") popoverShown = false;
+    if (!isPopoverOpen(host)) reassertGate.trigger();
+  }
+
+  function onOtherLayer(event: Event): void {
+    if (!visible || !host || event.target === host) return;
+    if (typeof host.showPopover !== "function") return;
+    promoteGate.trigger();
+  }
+
+  function onDialogOpen(records: MutationRecord[]): void {
+    if (!visible || !host || typeof host.showPopover !== "function") return;
+    for (const record of records) {
+      const target = record.target as Element;
+      if (target.localName !== "dialog" || record.oldValue !== null) continue;
+      if (!target.hasAttribute("open")) continue;
+      promoteGate.trigger();
+      return;
+    }
+  }
+
   function startObservers(): void {
-    hostObserver = new MutationObserver(guardHost);
-    rootObserver = new MutationObserver(guardRoot);
+    hostObserver = new MutationObserver(() => reassertGate.trigger());
+    rootObserver = new MutationObserver(() => reassertGate.trigger());
+    styleObserver = new MutationObserver(() => reassertGate.trigger());
+    dialogObserver = new MutationObserver(onDialogOpen);
+    dialogObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["open"],
+      attributeOldValue: true,
+      subtree: true,
+    });
     observeHost();
     rootObserver.observe(document.documentElement, { childList: true });
+    host?.addEventListener("toggle", onToggle);
+    document.addEventListener("toggle", onOtherLayer, true);
+    document.addEventListener("close", onOtherLayer, true);
+    restoreRootStyles();
+    styleObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ROOT_ATTRIBUTES,
+    });
   }
 
   function stopObservers(): void {
     hostObserver?.disconnect();
     rootObserver?.disconnect();
+    styleObserver?.disconnect();
+    dialogObserver?.disconnect();
+    dialogObserver = null;
     hostObserver = null;
     rootObserver = null;
+    styleObserver = null;
+    reassertGate.cancel();
+    promoteGate.cancel();
+    host?.removeEventListener("toggle", onToggle);
+    document.removeEventListener("toggle", onOtherLayer, true);
+    document.removeEventListener("close", onOtherLayer, true);
+    giveBackRootStyles();
   }
 
   function show(text: string): void {

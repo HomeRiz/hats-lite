@@ -111,7 +111,7 @@ describe("hats-lite-designer", () => {
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
       ok: true,
       status: 200,
-      json: async () => ({ url: "/local/hats/bg.png" }),
+      json: async () => ({ url: "/local/hats_lite/11111111111111111111111111111111.png" }),
     }));
     vi.stubGlobal("fetch", fetchMock);
     const el = await mount(hass);
@@ -122,7 +122,7 @@ describe("hats-lite-designer", () => {
     input.dispatchEvent(new Event("change"));
 
     await vi.waitFor(() => {
-      expect(previewOf(el).candidate?.vars["lovelace-background"]).toContain("/local/hats/bg.png");
+      expect(previewOf(el).candidate?.vars["lovelace-background"]).toContain("/local/hats_lite/11111111111111111111111111111111.png");
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
@@ -219,7 +219,7 @@ describe("hats-lite-designer upload and mode", () => {
     const fetchWithAuth = vi.fn(async (_path: string, _init?: RequestInit) => ({
       ok: true,
       status: 200,
-      json: async () => ({ url: "/local/hats/fresh.png" }),
+      json: async () => ({ url: "/local/hats_lite/22222222222222222222222222222222.png" }),
     }));
     (hass as PanelHass).fetchWithAuth = fetchWithAuth as unknown as PanelHass["fetchWithAuth"];
     const fetchMock = vi.fn();
@@ -228,7 +228,7 @@ describe("hats-lite-designer upload and mode", () => {
 
     chooseFile(el, new File(["x"], "bg.png", { type: "image/png" }));
     await vi.waitFor(() => {
-      expect(previewOf(el).candidate?.vars["lovelace-background"]).toContain("/local/hats/fresh.png");
+      expect(previewOf(el).candidate?.vars["lovelace-background"]).toContain("/local/hats_lite/22222222222222222222222222222222.png");
     });
     expect(fetchMock).not.toHaveBeenCalled();
     const [path, init] = fetchWithAuth.mock.calls[0];
@@ -319,7 +319,7 @@ describe("hats-lite-designer mode control", () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       status: 200,
-      json: async () => ({ url: "/local/hats/drop.png" }),
+      json: async () => ({ url: "/local/hats_lite/33333333333333333333333333333333.png" }),
     }));
     vi.stubGlobal("fetch", fetchMock);
     const el = await mount(hass);
@@ -333,7 +333,7 @@ describe("hats-lite-designer mode control", () => {
     });
     requireQuery<HTMLButtonElement>(el, 'button[data-action="upload"]').dispatchEvent(drop);
     await vi.waitFor(() => {
-      expect(previewOf(el).candidate?.vars["lovelace-background"]).toContain("/local/hats/drop.png");
+      expect(previewOf(el).candidate?.vars["lovelace-background"]).toContain("/local/hats_lite/33333333333333333333333333333333.png");
     });
   });
 });

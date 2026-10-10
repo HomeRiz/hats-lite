@@ -130,10 +130,10 @@ describe("path checks for callApi and fetchWithAuth", () => {
   });
 
   it.each([
-    "/api/x?u=http%3A%2F%2Fa",
-    "/api/x?u=http%3a%2f%2fa",
-    "/api/x?email=a@b",
-    "/api/x#user@host",
+    "/api/states?u=http%3A%2F%2Fa",
+    "/api/states?u=http%3a%2f%2fa",
+    "/api/states?email=a@b",
+    "/api/states#user@host",
   ])("allows %j when @ or an encoded slash is only in the query or fragment", async (path) => {
     const { hass, ro } = build();
     await expect(ro.fetchWithAuth(path)).resolves.toBe(`fetch:${path}`);

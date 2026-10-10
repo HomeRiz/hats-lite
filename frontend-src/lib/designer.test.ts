@@ -22,13 +22,21 @@ describe("buildDesignerVars", () => {
   });
   it("builds the light card background", () => {
     const v = buildDesignerVars({ ...base, mode: "light", tint: 10 });
-    expect(v["ha-card-background"]).toBe("rgba(255,255,255,0.6)");
+    expect(v["ha-card-background"]).toBe("rgba(255,255,255,0.5)");
+  });
+  it("never lets the light card alpha exceed 1", () => {
+    for (let tint = 0; tint <= 100; tint += 1) {
+      const v = buildDesignerVars({ ...base, mode: "light", tint });
+      const alpha = Number(v["ha-card-background"].split(",")[3].replace(")", ""));
+      expect(alpha).toBeLessThanOrEqual(1);
+      expect(alpha).toBeGreaterThan(0);
+    }
   });
   it("clamps ranges", () => {
     const v = buildDesignerVars({ ...base, radius: 99, blur: 100, tint: 500 });
     expect(v["ha-card-border-radius"]).toBe("48px");
     expect(v["ha-card-backdrop-filter"]).toBe("blur(40px)");
-    expect(v["ha-card-background"]).toBe("rgba(255,255,255,0.6)");
+    expect(v["ha-card-background"]).toBe("rgba(255,255,255,0.29)");
     const w = buildDesignerVars({ ...base, radius: -5, blur: -1, tint: 0 });
     expect(w["ha-card-border-radius"]).toBe("0px");
     expect(w["ha-card-backdrop-filter"]).toBe("blur(0px)");
@@ -55,48 +63,57 @@ describe("buildDesignerVars", () => {
     const v = buildDesignerVars({ ...base, background: { kind: "none", value: "x" } });
     expect(v["lovelace-background"]).toBeUndefined();
   });
-  it("accepts safe backgrounds", () => {
-    const ok = [
-      "data:image/png;base64,iVBORw0KGgo=",
-      "data:image/jpeg;base64,/9j/4AAQ+x==",
-      "data:image/webp;base64,AAAA",
-      "data:image/gif;base64,R0lGOD",
-      "https://example.com/a.jpg?x=1&y=2",
-      "/local/bg/a.png",
-    ];
-    for (const value of ok) {
-      const kinds = value.startsWith("https://") ? (["upload"] as const) : (["preset", "upload"] as const);
-      for (const kind of kinds) {
-        const v = buildDesignerVars({ ...base, background: { kind, value } });
-        expect(v["lovelace-background"]).toBe(`center / cover no-repeat fixed url('${value}')`);
-      }
+  it("accepts upload paths and https urls", () => {
+    const local = `/local/hats_lite/${"ab12".repeat(8)}.webp`;
+    for (const ext of ["png", "jpg", "webp", "gif"]) {
+      const value = `/local/hats_lite/${"0f".repeat(16)}.${ext}`;
+      const v = buildDesignerVars({ ...base, background: { kind: "upload", value } });
+      expect(v["lovelace-background"]).toBe(`center / cover no-repeat fixed url('${value}')`);
     }
+    const url = "https://example.com/a.jpg?x=1&y=2";
+    const v = buildDesignerVars({ ...base, background: { kind: "url", value: url } });
+    expect(v["lovelace-background"]).toContain(url);
+    expect(
+      buildDesignerVars({ ...base, background: { kind: "preset", value: local } })["lovelace-background"],
+    ).toContain(local);
   });
   it("rejects unsafe backgrounds", () => {
-    const bad = [
-      undefined,
-      "",
-      "http://example.com/a.png",
-      "javascript:alert(1)",
-      "data:image/svg+xml;base64,AAAA",
-      "data:text/html;base64,AAAA",
-      "data:image/png;base64,AA'AA",
-      "https://e.com/a'b",
-      "https://e.com/a\\b",
-      "https://e.com/a(b)",
-      "https://e.com/a)b",
-      "https://e.com/a b",
-      "https://e.com/\"x",
-      "https://e.com/a;b",
-      "https://e.com/a}b",
-      "/local/a'b.png",
-      "/local/a(b).png",
-      "/media/a.png",
-      "local/a.png",
+    const id = "a".repeat(32);
+    const bad: [string, string | undefined][] = [
+      ["upload", undefined],
+      ["upload", ""],
+      ["upload", "/local/bg/a.png"],
+      ["upload", "/local/hats/bg.png"],
+      ["upload", `/local/hats_lite/${"a".repeat(31)}.png`],
+      ["upload", `/local/hats_lite/${id}.svg`],
+      ["upload", `/local/hats_lite/${id}.png `],
+      ["upload", `/local/hats_lite/../${id}.png`],
+      ["upload", `/local/hats_lite/${id}.png?x=1`],
+      ["upload", "data:image/png;base64,AAAA"],
+      ["upload", "https://example.com/a.png"],
+      ["url", "http://example.com/a.png"],
+      ["url", "javascript:alert(1)"],
+      ["url", "/local/hats_lite/" + id + ".png"],
+      ["url", "https://e.com/a'b"],
+      ["url", "https://e.com/a\\b"],
+      ["url", "https://e.com/a(b)"],
+      ["url", "https://e.com/a)b"],
+      ["url", "https://e.com/a b"],
+      ["url", "https://e.com/a\tb"],
+      ["url", 'https://e.com/"x'],
+      ["url", "https://e.com/a;b"],
+      ["url", "https://e.com/a}b"],
+      ["url", "https://e.com/a{b"],
+      ["url", "https://e.com/../a.png"],
+      ["url", "https://e.com/a.png!important"],
+      ["url", "https://e.com/a.png!IMPORTANT"],
     ];
-    for (const value of bad) {
+    for (const [kind, value] of bad) {
       expect(() =>
-        buildDesignerVars({ ...base, background: { kind: "preset", value } }),
+        buildDesignerVars({
+          ...base,
+          background: { kind: kind as "upload" | "url", value },
+        }),
       ).toThrow("Invalid background");
     }
   });

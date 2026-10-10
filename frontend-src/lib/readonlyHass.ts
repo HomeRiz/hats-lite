@@ -1,128 +1,86 @@
+import { makeConnection, newTeardown, releaseAll, type Teardown } from "./readonlyConnection";
+import {
+  allowedSnapshot,
+  blockedType,
+  describeMethod,
+  hasMethodOverride,
+  helperKind,
+  isAllowedApi,
+  isSafePath,
+  pathLabel,
+  recordBlocked,
+  snapshotMessage,
+  snapshotMethod,
+} from "./readonlyPolicy";
 import { readOnlyView } from "./viewTarget";
+import {
+  apply,
+  bindTo,
+  hasOwn,
+  isEnumerable,
+  ownKeys,
+  rawGet,
+  reflectHas,
+  weakGet,
+  weakSet,
+  type AnyFn,
+} from "./viewIntrinsics";
 
-export const blockedCalls: string[] = [];
+export { blockedCalls, blockedTotal, clearBlocked } from "./readonlyPolicy";
 
-export function clearBlocked(): void {
-  blockedCalls.length = 0;
+type Held = { state: Teardown };
+
+const teardowns = new WeakMap<object, Held>();
+const states = new WeakMap<object, Map<unknown, Teardown>>();
+const SHARED_OWNER = Symbol("shared");
+
+export function disposeReadOnlyHass(proxy: object): void {
+  const held = weakGet(teardowns, proxy);
+  if (!held) return;
+  held.state.disposed = true;
+  releaseAll(held.state);
 }
 
-const WS_ALLOWED =
-  /^(get_|lovelace\/config$|lovelace\/resources$|frontend\/get_|config\/[a-z_]+\/list$|auth\/current_user$|render_template$)/;
-
-type AnyFn = (...args: unknown[]) => unknown;
-
-type Snapshot = { type: string; msg: Record<string, unknown> };
-
-function snapshotMessage(msg: unknown): Snapshot | undefined {
-  if (typeof msg !== "object" || msg === null) return undefined;
-  const copy = { ...(msg as object) } as Record<string, unknown>;
-  const type = copy.type;
-  if (typeof type !== "string") return undefined;
-  return { type, msg: copy };
+function stateFor(target: object, owner: unknown): Teardown {
+  const connection = rawGet(target, "connection", undefined);
+  const key = typeof connection === "object" && connection !== null ? connection : target;
+  let owners = weakGet(states, key);
+  if (!owners) {
+    owners = new Map();
+    weakSet(states, key, owners);
+  }
+  const found = owners.get(owner);
+  if (found && !found.disposed) return found;
+  const created = newTeardown();
+  owners.set(owner, created);
+  return created;
 }
 
-function allowedSnapshot(snap: Snapshot | undefined): snap is Snapshot {
-  return snap !== undefined && WS_ALLOWED.test(snap.type);
-}
+const OBJECT_METHODS = new Map<PropertyKey, unknown>(
+  ["hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable", "toString", "toLocaleString", "valueOf"].map(
+    (name) => [name, (Object.prototype as unknown as Record<string, unknown>)[name]],
+  ),
+);
 
-function blockedType(snap: Snapshot | undefined): string {
-  return `ws:${snap ? snap.type : "invalid"}`;
-}
+const DISPOSED_MESSAGE = "Preview closed: this read-only hass has been disposed";
 
-const READ_HELPERS = new Set<PropertyKey>([
-  "localize",
-  "formatEntityState",
-  "formatEntityAttributeName",
-  "formatEntityAttributeValue",
-  "formatEntityName",
-  "loadBackendTranslation",
-  "loadFragmentTranslation",
-  "hassUrl",
-]);
-
-const PATH_BLOCKED = /\\|\.\.|[\u0000- \u007f]|%(2e|5c)/i;
-
-const PATH_ONLY_BLOCKED = /@|%2f/i;
-
-const SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/;
-
-function isSafePath(path: unknown, allowRelative = false): path is string {
-  if (typeof path !== "string" || path === "") return false;
-  if (PATH_BLOCKED.test(path) || path.startsWith("//")) return false;
-  if (PATH_ONLY_BLOCKED.test(path.split(/[?#]/, 1)[0])) return false;
-  if (path.startsWith("/")) return true;
-  return allowRelative && !SCHEME.test(path);
-}
-
-function pathLabel(path: unknown): string {
-  return typeof path === "string" ? path : "invalid";
-}
-
-const connections = new WeakMap<object, object>();
-
-function snapshotMethod(method: unknown): string | null {
-  if (method === undefined || method === null) return "GET";
-  if (typeof method === "string" && method.toUpperCase() === "GET") return "GET";
-  return null;
-}
-
-function describeMethod(method: unknown): string {
-  return typeof method === "string" ? method.toUpperCase() : "invalid";
-}
-
-function makeConnection(connection: unknown): object | undefined {
-  if (typeof connection !== "object" || connection === null) return undefined;
-  const cached = connections.get(connection);
-  if (cached) return cached;
-  const target = connection as Record<string, unknown>;
-  const call = (name: string, ...args: unknown[]) =>
-    (target[name] as AnyFn).apply(target, args);
-  const wrapped = {
-    get connected() {
-      return target.connected;
-    },
-    get haVersion() {
-      return target.haVersion;
-    },
-    async sendMessagePromise(msg: unknown) {
-      const snap = snapshotMessage(msg);
-      if (allowedSnapshot(snap)) return call("sendMessagePromise", snap.msg);
-      blockedCalls.push(blockedType(snap));
-      return undefined;
-    },
-    sendMessage(msg: unknown, commandId?: unknown) {
-      const snap = snapshotMessage(msg);
-      if (allowedSnapshot(snap)) return call("sendMessage", snap.msg, commandId);
-      blockedCalls.push(blockedType(snap));
-      return undefined;
-    },
-    async subscribeMessage(callback: unknown, msg: unknown, options?: unknown) {
-      const snap = snapshotMessage(msg);
-      if (allowedSnapshot(snap)) {
-        return call("subscribeMessage", callback, snap.msg, options);
-      }
-      blockedCalls.push(blockedType(snap));
-      return () => undefined;
-    },
-  };
-  const frozen = Object.freeze(wrapped);
-  connections.set(connection, frozen);
-  return frozen;
-}
-
-export function makeReadOnlyHass<T extends object>(hass: T): T {
+export function makeReadOnlyHass<T extends object>(hass: T, owner: unknown = SHARED_OWNER): T {
   const target = hass as Record<PropertyKey, unknown>;
+  const state = stateFor(target, owner);
+  const live = () => {
+    if (state.disposed) throw new Error(DISPOSED_MESSAGE);
+  };
   const proxy: T = new Proxy({} as T, {
     has(_dummy, prop) {
-      return prop !== "auth" && Reflect.has(target, prop);
+      return prop !== "auth" && reflectHas(target, prop);
     },
     ownKeys() {
-      return Reflect.ownKeys(target).filter((k) => k !== "auth");
+      return ownKeys(target).filter((k) => k !== "auth");
     },
     getOwnPropertyDescriptor(_dummy, prop) {
-      if (prop === "auth" || !Reflect.has(target, prop)) return undefined;
+      if (prop === "auth" || !reflectHas(target, prop)) return undefined;
       return {
-        value: Reflect.get(proxy, prop),
+        value: (proxy as Record<PropertyKey, unknown>)[prop],
         enumerable: true,
         configurable: true,
         writable: false,
@@ -130,58 +88,77 @@ export function makeReadOnlyHass<T extends object>(hass: T): T {
     },
     get(_dummy, prop) {
       if (prop === "auth") return undefined;
-      const value = Reflect.get(target, prop, target);
-      if (prop === "connection") return makeConnection(value);
+      const value = rawGet(target, prop, proxy);
+      if (prop === "connection") {
+        return makeConnection(value, state);
+      }
+      if (OBJECT_METHODS.has(prop) && value === OBJECT_METHODS.get(prop)) {
+        if (prop === "hasOwnProperty") {
+          return (key: PropertyKey) => key !== "auth" && hasOwn(target, key);
+        }
+        if (prop === "valueOf") return () => proxy;
+        if (prop === "toString" || prop === "toLocaleString") return () => "[object Object]";
+        if (prop === "isPrototypeOf") return () => false;
+        return (key: PropertyKey) => key !== "auth" && isEnumerable(target, key);
+      }
       if (typeof value !== "function") return readOnlyView(value);
       const fn = value as AnyFn;
       switch (prop) {
         case "callService":
           return async (domain: unknown, service: unknown) => {
-            blockedCalls.push(`service:${String(domain)}.${String(service)}`);
+            recordBlocked(`service:${String(domain)}.${String(service)}`);
             return undefined;
           };
         case "callWS":
           return async (msg: unknown) => {
+            live();
             const snap = snapshotMessage(msg);
-            if (allowedSnapshot(snap)) return fn.call(target, snap.msg);
-            blockedCalls.push(blockedType(snap));
+            if (allowedSnapshot(snap)) return apply(fn, target, [snap.msg]);
+            recordBlocked(blockedType(snap));
             return undefined;
           };
         case "callApi":
           return async (method: unknown, path: unknown, ...rest: unknown[]) => {
+            live();
             if (typeof method === "string" && snapshotMethod(method)) {
-              if (!isSafePath(path, true)) {
-                blockedCalls.push(`api-path:${pathLabel(path)}`);
+              if (!isSafePath(path, true) || !isAllowedApi(path)) {
+                recordBlocked(`api-path:${pathLabel(path)}`);
                 return undefined;
               }
-              return fn.call(target, method, path, ...rest);
+              return apply(fn, target, [method, path, ...rest]);
             }
-            blockedCalls.push(`api:${describeMethod(method)}`);
+            recordBlocked(`api:${describeMethod(method)}`);
             return undefined;
           };
         case "fetchWithAuth":
           return async (path: unknown, init?: unknown) => {
-            if (!isSafePath(path)) {
-              blockedCalls.push(`fetch-path:${pathLabel(path)}`);
+            live();
+            if (!isSafePath(path) || !isAllowedApi(path)) {
+              recordBlocked(`fetch-path:${pathLabel(path)}`);
               return undefined;
             }
             if (init === undefined || init === null) {
-              return fn.call(target, path, init);
+              return apply(fn, target, [path, init]);
             }
             const copy = { ...(init as object) } as Record<string, unknown>;
-            const method = copy.method;
-            if (!snapshotMethod(method)) {
-              blockedCalls.push(`fetch:${describeMethod(method)}`);
+            if (hasMethodOverride(copy.headers)) {
+              recordBlocked("fetch-header:method-override");
               return undefined;
             }
-            return fn.call(target, path, copy);
+            const method = copy.method;
+            if (!snapshotMethod(method)) {
+              recordBlocked(`fetch:${describeMethod(method)}`);
+              return undefined;
+            }
+            return apply(fn, target, [path, copy]);
           };
         default:
-          if (READ_HELPERS.has(prop)) {
-            return fn.bind(target);
+          if (helperKind(prop) === "loader") return bindTo(fn, target);
+          if (helperKind(prop) === "read") {
+            return (...args: unknown[]) => readOnlyView(apply(fn, target, args));
           }
           return async () => {
-            blockedCalls.push(String(prop));
+            recordBlocked(String(prop));
             return undefined;
           };
       }
@@ -202,5 +179,6 @@ export function makeReadOnlyHass<T extends object>(hass: T): T {
       return false;
     },
   });
+  weakSet(teardowns, proxy, { state });
   return proxy;
 }

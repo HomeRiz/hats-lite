@@ -23,6 +23,9 @@ export const stringsDesigner = {
   uploadFailed: "Upload failed. The previous background is kept.",
   invalidColor: "Pick a valid color",
   invalidBackground: "This background is not allowed",
+  backgroundTooLong: "This background address is too long (2000 characters at most).",
+  restartReminder:
+    "This theme uses an uploaded background. Backgrounds need a Home Assistant restart before they are served.",
   invalidInput: "Some values are not valid",
   saveTitle: "Save as theme",
   saveAdminOnly: "Only administrators can save themes.",
@@ -33,4 +36,12 @@ export const stringsDesigner = {
   saving: "Saving...",
   saved: "Theme saved",
   saveFailed: "Could not save the theme.",
+  nameReserved: "This name is reserved. Pick another name.",
+  nameExists: "A theme with this name already exists. Pick another name.",
+  formatInvalid: "The theme could not be written in a valid format.",
+  overwrote: "Saved. An existing theme with this name was replaced.",
+  needsRestart:
+    "Background uploaded. Backgrounds need a Home Assistant restart before they are served.",
+  warnMainCard: "The main color is hard to see on cards (contrast {ratio}:1, 3:1 recommended).",
+  warnAccentCard: "The accent color is hard to see on cards (contrast {ratio}:1, 3:1 recommended).",
 };

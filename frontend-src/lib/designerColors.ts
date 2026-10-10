@@ -16,6 +16,10 @@ export function mix(top: Rgb, base: Rgb, weight: number): Rgb {
   return [0, 1, 2].map((i) => Math.round(top[i] * weight + base[i] * (1 - weight))) as Rgb;
 }
 
+export function mixExact(top: Rgb, base: Rgb, weight: number): Rgb {
+  return [0, 1, 2].map((i) => top[i] * weight + base[i] * (1 - weight)) as Rgb;
+}
+
 function linear(value: number): number {
   const s = value / 255;
   return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
@@ -37,13 +41,16 @@ export function readableOn(bg: Rgb): Rgb {
   return contrast(WHITE, bg) >= contrast(BLACK, bg) ? WHITE : BLACK;
 }
 
+function worst(fg: Rgb, bgs: Rgb[]): number {
+  return Math.min(...bgs.map((bg) => contrast(fg, bg)));
+}
+
 export function ensureContrast(fg: Rgb, bgs: Rgb[], min: number): Rgb {
-  const ok = (c: Rgb) => bgs.every((bg) => contrast(c, bg) >= min);
-  if (ok(fg)) return fg;
-  const target = bgs.every((bg) => contrast(WHITE, bg) >= contrast(BLACK, bg)) ? WHITE : BLACK;
+  if (worst(fg, bgs) >= min) return fg;
+  const target = worst(WHITE, bgs) >= worst(BLACK, bgs) ? WHITE : BLACK;
   for (let step = 1; step <= 20; step += 1) {
     const next = mix(target, fg, step / 20);
-    if (ok(next)) return next;
+    if (worst(next, bgs) >= min) return next;
   }
   return target;
 }

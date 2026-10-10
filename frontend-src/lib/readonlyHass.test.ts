@@ -77,10 +77,10 @@ describe("makeReadOnlyHass", () => {
 
   it("lets GET through fetchWithAuth and blocks writes", async () => {
     const { hass, ro } = build();
-    await expect(ro.fetchWithAuth("/a")).resolves.toBe("fetch:/a");
-    await expect(ro.fetchWithAuth("/a", { method: "GET" })).resolves.toBe("fetch:/a");
-    await expect(ro.fetchWithAuth("/a", { method: "POST" })).resolves.toBeUndefined();
-    await expect(ro.fetchWithAuth("/a", { method: "delete" })).resolves.toBeUndefined();
+    await expect(ro.fetchWithAuth("/api/states")).resolves.toBe("fetch:/api/states");
+    await expect(ro.fetchWithAuth("/api/states", { method: "GET" })).resolves.toBe("fetch:/api/states");
+    await expect(ro.fetchWithAuth("/api/states", { method: "POST" })).resolves.toBeUndefined();
+    await expect(ro.fetchWithAuth("/api/states", { method: "delete" })).resolves.toBeUndefined();
     expect(hass.fetchWithAuth).toHaveBeenCalledTimes(2);
     expect(blockedCalls).toHaveLength(2);
   });
@@ -135,7 +135,7 @@ describe("makeReadOnlyHass", () => {
   it("blocks object valued methods", async () => {
     const { hass, ro } = build();
     const method = { toString: () => "POST" };
-    await expect(ro.fetchWithAuth("/a", { method } as never)).resolves.toBeUndefined();
+    await expect(ro.fetchWithAuth("/api/states", { method } as never)).resolves.toBeUndefined();
     await expect(ro.callApi(method as never, "x")).resolves.toBeUndefined();
     expect(hass.fetchWithAuth).not.toHaveBeenCalled();
     expect(hass.callApi).not.toHaveBeenCalled();
@@ -150,7 +150,7 @@ describe("makeReadOnlyHass", () => {
         return reads === 1 ? "GET" : "POST";
       },
     };
-    await ro.fetchWithAuth("/a", init);
+    await ro.fetchWithAuth("/api/states", init);
     const passed = hass.fetchWithAuth.mock.calls[0][1] as { method: string };
     expect(passed).not.toBe(init);
     expect(passed.method).toBe("GET");
@@ -290,8 +290,8 @@ describe("makeReadOnlyHass", () => {
     const blockedNames = [
       "ws", "execute", "turnOn", "toggle", "run", "invoke", "emit", "trigger",
       "notify", "reload", "restart", "navigate", "getAndSend", "setTheme",
-      "removeEventListener", "getFoo", "isReady", "getAndToggle", "loadAndRestart",
-      "hasPressedReload", "toNavigate", "isComputing",
+      "removeEventListener", "getAndToggle", "loadAndRestart",
+      "hasPressedReload", "toNavigate",
     ];
     const hass: Record<string, unknown> = {
       prefix: "p:",
@@ -313,14 +313,13 @@ describe("makeReadOnlyHass", () => {
     }
   });
 
-  it("stubs getAndToggle, loadAndRestart, hasPressedReload, toNavigate and isComputing", async () => {
+  it("stubs getAndToggle, loadAndRestart, hasPressedReload and toNavigate", async () => {
     const real = vi.fn(() => "real");
     const hass = {
       getAndToggle: real,
       loadAndRestart: real,
       hasPressedReload: real,
       toNavigate: real,
-      isComputing: real,
     };
     const ro = makeReadOnlyHass(hass) as unknown as Record<string, () => Promise<unknown>>;
     for (const n of Object.keys(hass)) {
