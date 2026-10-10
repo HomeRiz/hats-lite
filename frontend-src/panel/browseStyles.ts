@@ -76,6 +76,8 @@ export const browseStyles = css`
     gap: 20px;
   }
   .card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 320px;
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -147,6 +149,20 @@ export const browseStyles = css`
   }
   .banner {
     color: var(--error-color, #db4437);
+  }
+  .retry {
+    margin-bottom: 12px;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
   }
   .note {
     color: var(--hl-muted);

@@ -25,7 +25,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 
 function stringMap(value: unknown): Record<string, string> {
   if (!isRecord(value)) return {};
-  const out: Record<string, string> = {};
+  const out: Record<string, string> = Object.create(null);
   for (const [key, entry] of Object.entries(value)) {
     if (typeof entry === "string") out[key] = entry;
   }
@@ -44,15 +44,50 @@ export function normalizeTheme(stored: Record<string, unknown>): ThemeEntry {
   return { vars: stringMap(stored), modes: modesOf(stored.modes) };
 }
 
-export function currentThemeVars(
-  hass: PanelHass | undefined,
-  mode: PreviewMode,
-): Record<string, string> {
+export function activeThemeEntry(hass: PanelHass | undefined): ThemeEntry | undefined {
   const name = hass?.selectedTheme?.theme ?? hass?.themes?.theme;
-  if (!name) return {};
-  const stored = hass?.themes?.themes?.[name];
-  if (!isRecord(stored)) return {};
-  return resolveVars(normalizeTheme(stored), mode);
+  const themes = hass?.themes?.themes;
+  if (!name || !themes || !Object.prototype.hasOwnProperty.call(themes, name)) return undefined;
+  const stored = themes[name];
+  return isRecord(stored) ? normalizeTheme(stored) : undefined;
+}
+
+export function normalizeValue(value: string): string {
+  const text = value
+    .trim()
+    .replace(/[\s;]+$/, "")
+    .replace(/\s*!important$/i, "")
+    .replace(/[\s;]+$/, "")
+    .replace(/\s+/g, " ");
+  return /^#[0-9a-f]+$/i.test(text) ? text.toLowerCase() : text;
+}
+
+function sharedKeysDiffer(a: Record<string, string>, b: Record<string, string>): boolean {
+  return Object.keys(a).some(
+    (key) =>
+      Object.prototype.hasOwnProperty.call(b, key) &&
+      normalizeValue(a[key]) !== normalizeValue(b[key]),
+  );
+}
+
+export function entriesDiffer(stored: ThemeEntry, candidate: ThemeEntry): boolean {
+  return (["dark", "light"] as const).some((mode) =>
+    sharedKeysDiffer(resolveVars(stored, mode), resolveVars(candidate, mode)),
+  );
+}
+
+export function themesDiffer(installed: unknown, candidate: ThemeEntry): boolean {
+  if (!isRecord(installed)) return false;
+  return entriesDiffer(normalizeTheme(installed), candidate);
+}
+
+export function themeKeys(entry: ThemeEntry | undefined): string[] {
+  if (!entry) return [];
+  return [
+    ...Object.keys(entry.vars),
+    ...Object.keys(entry.modes?.dark ?? {}),
+    ...Object.keys(entry.modes?.light ?? {}),
+  ];
 }
 
 export function previousSelection(hass: PanelHass | undefined): Selection {
@@ -68,13 +103,19 @@ export function previousSelection(hass: PanelHass | undefined): Selection {
 
 export function candidateSelection(
   candidate: PreviewCandidate,
-  mode: PreviewMode,
+  mode?: PreviewMode,
 ): Selection {
-  return { theme: candidate.name, dark: mode === "dark" };
+  const selection: Selection = { theme: candidate.name };
+  if (mode) selection.dark = mode === "dark";
+  return selection;
 }
 
 export function isApplicable(candidate: PreviewCandidate): boolean {
-  return candidate.installed && candidate.canApply;
+  return candidate.installed && candidate.canApply && !candidate.nameCollision;
+}
+
+export function isTryable(candidate: PreviewCandidate): boolean {
+  return candidate.installed && !candidate.nameCollision;
 }
 
 export function repoUrlFor(fullName: string): string | undefined {

@@ -46,13 +46,13 @@ describe("atlasTile", () => {
     expect(atlasTile(0, 1, 1)).toMatchObject({ posX: 0, posY: 0 });
   });
 
-  it("rejects an invalid index", () => {
+  it("rejects an invalid index and skips only bad entries", () => {
     expect(parseAtlasIndex(index)).not.toBeNull();
     expect(parseAtlasIndex({ ...index, version: 2 })).toBeNull();
     const dup = { ...index, themes: [index.themes[0], { ...index.themes[1], index: 8 }] };
-    expect(parseAtlasIndex(dup)).toBeNull();
+    expect([...parseAtlasIndex(dup)!.themes.keys()]).toEqual(["alice/aurora-theme"]);
     const far = { ...index, themes: [{ ...index.themes[0], index: 21 }] };
-    expect(parseAtlasIndex(far)).toBeNull();
+    expect(parseAtlasIndex(far)!.themes.size).toBe(0);
   });
 });
 

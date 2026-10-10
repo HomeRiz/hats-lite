@@ -29,6 +29,8 @@ export type PanelHass = Hass & {
 export type ThemeSelectedDetail = {
   entry: CatalogEntry;
   themes: ThemeBundle;
+  names?: string[];
+  theme?: string;
 };
 
 export type PreviewMode = "dark" | "light";

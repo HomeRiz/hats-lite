@@ -14,9 +14,9 @@ function lookup(entry: unknown, key: string, dark: boolean): string {
   const modes = record.modes as Record<string, unknown> | undefined;
   const order = dark ? ["dark", "light"] : ["light", "dark"];
   return (
+    colorIn(modes?.[order[0]], key) ||
     colorIn(record, key) ||
     colorIn(record.vars, key) ||
-    colorIn(modes?.[order[0]], key) ||
     colorIn(modes?.[order[1]], key)
   );
 }

@@ -42,7 +42,7 @@ function makeHass(installed: string[] = ["ocean"], darkMode = true): PanelHass {
     },
     themes: {
       darkMode,
-      themes: Object.fromEntries(installed.map((name) => [name, { vars: {} }])),
+      themes: Object.fromEntries(installed.map((name) => [name, { vars: { "primary-color": "#999999" } }])),
     },
   } as unknown as PanelHass;
 }
@@ -85,8 +85,8 @@ function fire(target: EventTarget, type: string, detail: unknown): void {
   target.dispatchEvent(new CustomEvent(type, { bubbles: true, composed: true, detail }));
 }
 
-function selectedThemes(themeBundle: ThemeBundle = themes): void {
-  fire(browseEl(), EVENT_THEME_SELECTED, { entry, themes: themeBundle });
+function selectedThemes(themeBundle: ThemeBundle = themes, selected: CatalogEntry = entry): void {
+  fire(browseEl(), EVENT_THEME_SELECTED, { entry: selected, themes: themeBundle });
 }
 
 describe("hats-lite-panel shell", () => {
@@ -184,7 +184,7 @@ describe("hats-lite-panel shell", () => {
     await mount(makeHass(["aurora"]));
     selectedThemes();
     await panel.updateComplete;
-    expect(previewEl().candidate).toMatchObject({ nameCollision: true, canApply: true });
+    expect(previewEl().candidate).toMatchObject({ nameCollision: true, canApply: false });
   });
 
   it("drops the repo link when the catalog name is not a plain owner and repo", async () => {
@@ -264,7 +264,7 @@ describe("hats-lite-panel shell", () => {
 
   it("selecting an installed theme sets a candidate that can apply and opens Preview", async () => {
     await mount(makeHass(["ocean", "aurora"]));
-    selectedThemes();
+    selectedThemes(themes, { ...entry, installed: true });
     await panel.updateComplete;
     expect(tab("preview").getAttribute("aria-selected")).toBe("true");
     expect(previewEl().candidate).toMatchObject({
@@ -298,7 +298,7 @@ describe("hats-lite-panel shell", () => {
 
   it("shows a select for several themes in the file and switches the candidate", async () => {
     await mount(makeHass(["ocean", "dusk"]));
-    selectedThemes(twoThemes);
+    selectedThemes(twoThemes, { ...entry, installed: true });
     await panel.updateComplete;
     const select = root().querySelector<HTMLSelectElement>(".file-theme select");
     expect(select).not.toBeNull();

@@ -48,3 +48,28 @@ describe("LoadQueue", () => {
     }
   });
 });
+
+describe("LoadQueue delays", () => {
+  it("does not retry when the delay is null", async () => {
+    const queue = new LoadQueue(3, 5000, 1, () => null);
+    const task = vi.fn().mockRejectedValue(new Error("x"));
+    await expect(queue.add(task)).rejects.toThrow("x");
+    expect(task).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for the delay with the error", async () => {
+    vi.useFakeTimers();
+    try {
+      const delayFor = vi.fn(() => 100);
+      const queue = new LoadQueue(3, 5000, 1, delayFor);
+      const err = new Error("x");
+      const task = vi.fn().mockRejectedValueOnce(err).mockResolvedValue("ok");
+      const result = queue.add(task);
+      await vi.advanceTimersByTimeAsync(150);
+      expect(await result).toBe("ok");
+      expect(delayFor).toHaveBeenCalledWith(err, 0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

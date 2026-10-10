@@ -67,13 +67,22 @@ const layout = css`
     position: relative;
     min-width: 0;
     overflow: visible;
-    background: var(--lovelace-background, var(--primary-background-color, #fafafa));
+    isolation: isolate;
+    background-color: var(--primary-background-color, #fafafa);
+    color: var(--primary-text-color, #1c1c1c);
+    font-family: var(--primary-font-family, system-ui, -apple-system, "Segoe UI", sans-serif);
+  }
+  .pane::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--lovelace-background, transparent);
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
     background-attachment: scroll;
-    color: var(--primary-text-color, #1c1c1c);
-    font-family: var(--primary-font-family, system-ui, -apple-system, "Segoe UI", sans-serif);
+    pointer-events: none;
   }
   .appbar {
     display: flex;

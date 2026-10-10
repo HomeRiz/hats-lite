@@ -24,8 +24,8 @@ describe("browse thumbnails", () => {
 
     expect(thumb.style.getPropertyValue("--primary-color")).toBe("#0af");
     expect(thumb.style.getPropertyValue("--primary-background-color")).toBe("#000");
-    expect(thumb.style.getPropertyValue("--card-background-color")).toBe("#1f2937");
-    expect(thumb.style.getPropertyValue("--divider-color")).toBe("rgba(255,255,255,.12)");
+    expect(thumb.style.getPropertyValue("--card-background-color")).toBe("#1c1c1c");
+    expect(thumb.style.getPropertyValue("--divider-color")).toBe("#e1e1e11f");
     expect(document.documentElement.style.getPropertyValue("--primary-color")).toBe("");
     expect(document.body.style.getPropertyValue("--primary-color")).toBe("");
   });
@@ -51,7 +51,7 @@ describe("browse thumbnails", () => {
     const el = await mount(makeHass(catalog, () => ({ themes: evil })));
     const thumb = thumbs(el)[0];
 
-    expect(thumb.style.getPropertyValue("--primary-color")).toBe("#38bdf8");
+    expect(thumb.style.getPropertyValue("--primary-color")).toBe("#009ac7");
     expect(thumb.style.getPropertyValue("--accent-color")).toBe("#123");
   });
 
@@ -179,9 +179,9 @@ describe("browse filters and in-use", () => {
   it("marks the card of the current theme as in use", async () => {
     const hass = makeHass(catalog, () => ({ themes: bundle }), {
       themes: {
-        theme: "aurora-theme",
+        theme: "aurora",
         darkMode: true,
-        themes: { "aurora-theme": { "primary-color": "#112233", "accent-color": "#445566" } },
+        themes: { aurora: { "primary-color": "#112233", "accent-color": "#445566" } },
       },
     });
     const el = await mount(hass);

@@ -1,8 +1,17 @@
 import { html, nothing, type TemplateResult } from "lit";
-import { styleMap } from "lit/directives/style-map.js";
 import { clipPathFor } from "../lib/split";
-import type { Density, DeviceFrame, PreviewMode } from "./contract";
-import { viewLabel, type DashboardOption, type LovelaceView } from "./previewData";
+import { ifDefined } from "lit/directives/if-defined.js";
+import { styleMap } from "lit/directives/style-map.js";
+import type { Density, DeviceFrame, PreviewCandidate, PreviewMode } from "./contract";
+import {
+  candidateVars,
+  isApplicable,
+  isTryable,
+  safeRepoUrl,
+  viewLabel,
+  type DashboardOption,
+  type LovelaceView,
+} from "./previewData";
 import { stringsPreview as s } from "./strings.preview";
 
 const FRAME_WIDTH: Record<DeviceFrame, string> = {
@@ -57,7 +66,7 @@ export type StageHandlers = {
 
 export type ActionsModel = {
   applicable: boolean;
-  installed: boolean;
+  tryable: boolean;
   trying: boolean;
   collision: string;
   repo: string | undefined;
@@ -65,6 +74,26 @@ export type ActionsModel = {
 };
 
 export type ActionsHandlers = { onApply(): void; onTry(): void };
+
+export function actionsModel(
+  candidate: PreviewCandidate,
+  trying: boolean,
+  error: string,
+): ActionsModel {
+  return {
+    applicable: isApplicable(candidate),
+    tryable: isTryable(candidate),
+    trying,
+    collision: candidate.nameCollision ? s.nameCollision.replace("{name}", candidate.name) : "",
+    repo: safeRepoUrl(candidate.repoUrl),
+    error,
+  };
+}
+
+export function emptyModeNote(candidate: PreviewCandidate | null | undefined, mode: PreviewMode): string {
+  if (!candidate || Object.keys(candidateVars(candidate, mode)).length > 0) return "";
+  return s.noModeBlock.replace("{mode}", s[mode].toLowerCase());
+}
 
 function choice(label: string, pressed: boolean, onClick: () => void): TemplateResult {
   return html`<button type="button" aria-pressed=${pressed ? "true" : "false"} @click=${onClick}>${label}</button>`;
@@ -129,9 +158,7 @@ export function renderStage(m: StageModel, h: StageHandlers): TemplateResult {
     })}>
       <div class=${m.comparing ? "stage" : "stage solo"}>
         <div class="pane current">${appBar(m.title)}<div class="cards" inert></div></div>
-        <div class="pane candidate" style=${styleMap(m.comparing ? { clipPath: clipPathFor(m.split) } : {})}>
-          ${appBar(m.title)}<div class="cards" inert></div>
-        </div>
+        <div class="pane candidate" style=${styleMap(m.comparing ? { clipPath: clipPathFor(m.split) } : {})}>${appBar(m.title)}<div class="cards" inert></div></div>
         <div class="shield"></div>
         ${m.comparing
           ? html`<div class="divider" role="slider" tabindex="0"
@@ -159,12 +186,12 @@ export function renderStage(m: StageModel, h: StageHandlers): TemplateResult {
 export function renderActions(m: ActionsModel, h: ActionsHandlers): TemplateResult {
   return html`
     <div class="actions">
-      <button type="button" class="btn primary apply" ?disabled=${!m.applicable} @click=${h.onApply}>${m.applicable ? s.apply : s.installFirst}</button>
-      <button type="button" class="btn try" ?disabled=${!m.installed || m.trying} @click=${h.onTry}>${s.tryButton}</button>
+      <button type="button" class="btn primary apply" aria-describedby=${ifDefined(m.collision ? "collision-note" : undefined)} ?disabled=${!m.applicable} @click=${h.onApply}>${m.applicable ? s.apply : m.collision ? s.nameTaken : s.installFirst}</button>
+      <button type="button" class="btn try" aria-describedby=${ifDefined(m.collision ? "collision-note" : undefined)} ?disabled=${!m.tryable || m.trying} @click=${h.onTry}>${s.tryButton}</button>
       ${!m.applicable && m.repo
         ? html`<a class="chip link" href=${m.repo} target="_blank" rel="noopener noreferrer">${s.repoLink}</a>`
         : nothing}
-      ${m.collision ? html`<p class="chip warn collision" role="status">${m.collision}</p>` : nothing}
+      ${m.collision ? html`<p id="collision-note" class="chip warn collision" role="status">${m.collision}</p>` : nothing}
       ${m.error ? html`<p class="error" role="alert">${m.error}</p>` : nothing}
     </div>`;
 }

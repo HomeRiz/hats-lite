@@ -1,5 +1,5 @@
 import { LitElement, html, nothing, type PropertyValues } from "lit";
-import { makeReadOnlyHass } from "../lib/readonlyHass";
+import { disposeReadOnlyHass, makeReadOnlyHass } from "../lib/readonlyHass";
 import { splitFromPointer } from "../lib/split";
 import {
   EVENT_MODE_CHANGE,
@@ -14,6 +14,7 @@ import {
   candidateVars,
   createPreviewCard,
   isApplicable,
+  isTryable,
   listDashboards,
   loadCardHelpers,
   safeRepoUrl,
@@ -28,18 +29,19 @@ import {
   fetchEntry,
   entryNotice,
   hasCards,
+  pickDashboard,
   sampleConfig,
   viewState,
   type DashboardCache,
   type DashboardEntry,
 } from "./previewDashboards";
 import { readCompare, writeCompare } from "./previewCompare";
-import { renderActions, renderStage, renderToolbar } from "./previewView";
-import { guardStage } from "./previewGuard";
+import { actionsModel, emptyModeNote, renderActions, renderStage, renderToolbar } from "./previewView";
+import { StageGuard } from "./previewStageGuard";
 import { applyStageVars, bindCardHass } from "./previewPanes";
 import { previewStyles } from "./previewStyles";
 import { capturePointer, releasePointer, splitForKey } from "./previewKeys";
-import { runTrial } from "./previewTrial";
+import { explicitMode, runTrial } from "./previewTrial";
 import { stringsPreview as s } from "./strings.preview";
 
 const PANE_CARDS = [".pane.current .cards", ".pane.candidate .cards"];
@@ -98,16 +100,33 @@ export class HatsLitePreview extends LitElement {
   private dragging = false;
   private readOnly?: PanelHass;
   private readOnlySource?: PanelHass;
+  private userMode?: PreviewMode;
+  private guard = new StageGuard();
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    this.readOnlySource = undefined;
+    if (this.hasUpdated) this.attachHass();
+    this.guard.sync(this.renderRoot);
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    if (this.readOnly) disposeReadOnlyHass(this.readOnly);
+    this.readOnly = undefined;
+    this.guard.release();
+  }
+
+  protected willUpdate(changed: PropertyValues): void {
+    if (changed.has("mode") && this.mode !== this.userMode) this.userMode = undefined;
+  }
 
   protected updated(changed: PropertyValues): void {
-    if (changed.has("hass") && this.hass && !this.dashboardsLoaded) {
-      void this.loadDashboards();
-    }
+    if (changed.has("hass") && this.hass && !this.dashboardsLoaded) void this.loadDashboards();
     this.attachHass();
     this.applyVars();
     if (changed.has("cards")) void this.buildCards();
-    const stage = this.renderRoot.querySelector(".stage");
-    if (stage instanceof HTMLElement) guardStage(stage);
+    this.guard.sync(this.renderRoot);
   }
 
   private comparing(): boolean {
@@ -129,25 +148,25 @@ export class HatsLitePreview extends LitElement {
     }
     const token = ++this.configToken;
     this.notice = s.loading;
-    for (const option of this.dashboards) {
-      const entry = await this.entryFor(option.url_path);
-      if (token !== this.configToken) return;
-      if (entry.status === "ok" && hasCards(entry.config)) {
-        this.dashboardUrl = option.url_path;
-        this.applyEntry(entry, option.url_path);
-        return;
-      }
+    const picked = await pickDashboard(
+      this.dashboards,
+      (urlPath) => this.entryFor(urlPath),
+      () => token !== this.configToken,
+    );
+    if (picked.stale) return;
+    if (picked.hit) {
+      this.dashboardUrl = picked.hit.urlPath;
+      this.applyEntry(picked.hit.entry, picked.hit.urlPath);
+      return;
     }
     this.dashboardUrl = null;
-    const entries = [...this.cache.values()];
     const sample = sampleConfig(hass.states);
-    if (sample && !entries.every((entry) => entry.status === "error")) {
+    if (sample && !picked.entries.every((entry) => entry.status === "error")) {
       this.sample = sample;
       this.useSample();
       return;
     }
-    const first = this.cache.get(dashboardKey(null));
-    if (first) this.applyEntry(first, null);
+    if (picked.entries[0]) this.applyEntry(picked.entries[0], null);
   }
 
   private async entryFor(urlPath: string | null): Promise<DashboardEntry> {
@@ -158,7 +177,7 @@ export class HatsLitePreview extends LitElement {
     const entry: DashboardEntry = hass
       ? await fetchEntry(hass, urlPath)
       : { status: "error", reason: "" };
-    this.cache.set(key, entry);
+    if (entry.status !== "error") this.cache.set(key, entry);
     if (urlPath === null && entry.status === "notfound") this.defaultGenerated = true;
     return entry;
   }
@@ -223,7 +242,7 @@ export class HatsLitePreview extends LitElement {
     if (!hass) return;
     if (hass !== this.readOnlySource) {
       this.readOnlySource = hass;
-      this.readOnly = makeReadOnlyHass(hass);
+      this.readOnly = makeReadOnlyHass(hass, this);
       force = true;
     }
     if (force && this.readOnly) bindCardHass(this.renderRoot, this.readOnly);
@@ -271,25 +290,23 @@ export class HatsLitePreview extends LitElement {
   private onApply(): void {
     const candidate = this.candidate;
     if (!candidate || !isApplicable(candidate)) return;
-    this.dispatchEvent(
-      new CustomEvent("settheme", {
-        detail: { theme: candidate.name, dark: this.effectiveMode() === "dark" },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    const detail: { theme: string; dark?: boolean } = { theme: candidate.name };
+    const chosen = explicitMode(this.userMode, this.mode, this.hass);
+    if (chosen) detail.dark = chosen === "dark";
+    this.dispatchEvent(new CustomEvent("settheme", { detail, bubbles: true, composed: true }));
   }
 
   private async onTry(): Promise<void> {
     const candidate = this.candidate;
-    if (!candidate || !candidate.installed || this.trying) return;
+    if (!candidate || !isTryable(candidate) || this.trying) return;
     this.error = "";
     this.trying = true;
-    this.error = await runTrial(this.hass, candidate, this.effectiveMode());
+    this.error = await runTrial(this.hass, candidate, explicitMode(this.userMode, this.mode, this.hass));
     this.trying = false;
   }
 
   private setMode(mode: PreviewMode): void {
+    this.userMode = mode;
     this.mode = mode;
     this.dispatchEvent(
       new CustomEvent<ModeChangeDetail>(EVENT_MODE_CHANGE, {
@@ -303,28 +320,16 @@ export class HatsLitePreview extends LitElement {
   private renderCandidateActions() {
     const candidate = this.candidate;
     if (!this.showActions || !candidate) return nothing;
-    return renderActions(
-      {
-        applicable: isApplicable(candidate),
-        installed: candidate.installed,
-        trying: this.trying,
-        collision: candidate.nameCollision
-          ? s.nameCollision.replace("{name}", candidate.name)
-          : "",
-        repo: safeRepoUrl(candidate.repoUrl),
-        error: this.error,
-      },
-      { onApply: () => this.onApply(), onTry: () => void this.onTry() },
-    );
+    return renderActions(actionsModel(candidate, this.trying, this.error), {
+      onApply: () => this.onApply(),
+      onTry: () => void this.onTry(),
+    });
   }
 
   private renderStageView() {
     const candidate = this.candidate;
     const mode = this.effectiveMode();
-    const note =
-      candidate && Object.keys(candidateVars(candidate, mode)).length === 0
-        ? s.noModeBlock.replace("{mode}", s[mode].toLowerCase())
-        : "";
+    const note = emptyModeNote(candidate, mode);
     return renderStage(
       {
         frame: this.frame,

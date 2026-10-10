@@ -34,7 +34,7 @@ type Handler = (msg: Record<string, unknown>) => unknown;
 export function makeHass(
   entries: CatalogEntry[] = catalog,
   themeHandler: Handler = () => ({ themes: bundle }),
-  extra: Record<string, unknown> = {},
+  extra: { themes?: { darkMode?: boolean; theme?: string; themes?: Record<string, unknown> } } = {},
 ) {
   const send = vi.fn((msg: Record<string, unknown>) => {
     if (msg.type === "hats_lite/catalog") return Promise.resolve({ source: "live", themes: entries });
@@ -84,4 +84,49 @@ export function themeCalls(hass: TestHass) {
   return hass.connection.sendMessagePromise.mock.calls.filter(
     (call) => call[0].type === "hats_lite/theme",
   );
+}
+
+export type FakeObserver = {
+  targets: Set<HTMLElement>;
+  fire(target: HTMLElement | string, isIntersecting?: boolean): void;
+  fireAll(): void;
+  restore(): void;
+};
+
+export function installObserver(): FakeObserver {
+  const targets = new Set<HTMLElement>();
+  let callback: (items: unknown[]) => void = () => undefined;
+  class Observer {
+    constructor(cb: (items: unknown[]) => void) {
+      callback = cb;
+    }
+    observe(target: HTMLElement) {
+      targets.add(target);
+    }
+    unobserve(target: HTMLElement) {
+      targets.delete(target);
+    }
+    disconnect() {
+      targets.clear();
+    }
+  }
+  vi.stubGlobal("IntersectionObserver", Observer);
+  const find = (target: HTMLElement | string): HTMLElement => {
+    if (typeof target !== "string") return target;
+    const found = Array.from(targets).find((el) => el.dataset.key?.includes(target));
+    if (!found) throw new Error(`not observed: ${target}`);
+    return found;
+  };
+  return {
+    targets,
+    fire(target, isIntersecting = true) {
+      callback([{ isIntersecting, target: find(target) }]);
+    },
+    fireAll() {
+      callback(Array.from(targets).map((target) => ({ isIntersecting: true, target })));
+    },
+    restore() {
+      vi.unstubAllGlobals();
+    },
+  };
 }

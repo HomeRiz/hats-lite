@@ -1,22 +1,59 @@
 import type { PreviewMode } from "./contract";
 
-export const BASELINE: Record<PreviewMode, Record<string, string>> = {
+const COLORS: Record<PreviewMode, Record<string, string>> = {
   dark: {
-    "primary-background-color": "#111827",
-    "card-background-color": "#1f2937",
-    "primary-text-color": "#f3f4f6",
-    "secondary-text-color": "#9ca3af",
-    "primary-color": "#38bdf8",
-    "accent-color": "#fb923c",
-    "divider-color": "rgba(255,255,255,.12)",
+    "primary-background-color": "#111111",
+    "card-background-color": "#1c1c1c",
+    "primary-text-color": "#e1e1e1",
+    "secondary-text-color": "#9b9b9b",
+    "primary-color": "#009ac7",
+    "accent-color": "#ff9800",
+    "divider-color": "#e1e1e11f",
+    "text-primary-color": "#ffffff",
+    "secondary-background-color": "#282828",
+    "disabled-text-color": "#6f6f6f",
   },
   light: {
-    "primary-background-color": "#f3f4f6",
+    "primary-background-color": "#fafafa",
     "card-background-color": "#ffffff",
-    "primary-text-color": "#111827",
-    "secondary-text-color": "#4b5563",
-    "primary-color": "#0284c7",
-    "accent-color": "#ea580c",
-    "divider-color": "rgba(0,0,0,.12)",
+    "primary-text-color": "#141414",
+    "secondary-text-color": "#5e5e5e",
+    "primary-color": "#009ac7",
+    "accent-color": "#ff9800",
+    "divider-color": "#0000001f",
+    "text-primary-color": "#ffffff",
+    "secondary-background-color": "#e5e5e5",
+    "disabled-text-color": "#bdbdbd",
   },
+};
+
+const SHARED: Record<string, string> = {
+  "paper-item-icon-color": "#44739e",
+  "light-primary-color": "#b3e5fc",
+  "dark-primary-color": "#0288d1",
+};
+
+const RGB_OF = [
+  "primary-color",
+  "accent-color",
+  "primary-text-color",
+  "secondary-text-color",
+  "card-background-color",
+  "primary-background-color",
+];
+
+function triplet(hex: string): string {
+  return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ");
+}
+
+function build(mode: PreviewMode): Record<string, string> {
+  const colors = COLORS[mode];
+  const out: Record<string, string> = { ...colors, ...SHARED };
+  for (const key of RGB_OF) out[`rgb-${key}`] = triplet(colors[key]);
+  return out;
+}
+
+export const BASELINE: Record<PreviewMode, Record<string, string>> = {
+  dark: build("dark"),
+  light: build("light"),
 };

@@ -160,7 +160,7 @@ describe("hats-lite-preview", () => {
     button(el, s.apply).click();
     expect(spy).toHaveBeenCalledTimes(1);
     const event = spy.mock.calls[0][0] as CustomEvent;
-    expect(event.detail).toEqual({ theme: "Ocean", dark: false });
+    expect(event.detail).toEqual({ theme: "Ocean" });
     expect(event.bubbles).toBe(true);
     expect(event.composed).toBe(true);
   });
@@ -202,7 +202,7 @@ describe("hats-lite-preview", () => {
     await vi.waitFor(() => expect(startTrial).toHaveBeenCalledTimes(1));
     expect(startTrial).toHaveBeenCalledWith(
       { theme: "Old", dark: false },
-      { theme: "Ocean", dark: false },
+      { theme: "Ocean" },
     );
   });
 
@@ -341,13 +341,13 @@ describe("hats-lite-preview mode and layout", () => {
     await vi.waitFor(() => expect(button(el, s.tryButton).disabled).toBe(false));
   });
 
-  it("flags a name collision with a note and keeps Apply enabled", async () => {
+  it("flags a name collision with a note and turns Apply off", async () => {
     const { hass } = makeHass();
     const el = await mount({ ...installed, nameCollision: true }, hass);
     expect(el.shadowRoot!.querySelector(".collision")?.textContent).toBe(
       s.nameCollision.replace("{name}", "Ocean"),
     );
-    expect(button(el, s.apply).disabled).toBe(false);
+    expect(el.shadowRoot!.querySelector<HTMLButtonElement>(".apply")!.disabled).toBe(true);
   });
 
   it("exposes the split as value text and supports Home, End and the vertical keys", async () => {

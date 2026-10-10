@@ -4,9 +4,19 @@ import type { PreviewMode } from "./contract";
 import { BASELINE } from "./browseBaseline";
 import { stringsBrowse as s } from "./strings.browse";
 
+function sameVars(
+  a: Record<string, string> | null | undefined,
+  b: Record<string, string> | null | undefined,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+}
+
 export class HatsLiteThumb extends LitElement {
   static properties = {
-    vars: { attribute: false },
+    vars: { attribute: false, hasChanged: (a: unknown, b: unknown) => !sameVars(a as never, b as never) },
     mode: { attribute: false },
     failed: { type: Boolean },
     limited: { type: Boolean },
@@ -21,6 +31,7 @@ export class HatsLiteThumb extends LitElement {
       container-type: inline-size;
       position: relative;
       color: var(--primary-text-color);
+      background-color: var(--primary-background-color);
     }
     .stage {
       box-sizing: border-box;
@@ -228,8 +239,13 @@ export class HatsLiteThumb extends LitElement {
   failed = false;
   limited = false;
 
+  private painted?: { vars: Record<string, string> | null; mode: PreviewMode };
+
   protected updated(changed: PropertyValues): void {
     if (!changed.has("vars") && !changed.has("mode")) return;
+    const last = this.painted;
+    if (last && last.mode === this.mode && sameVars(last.vars, this.vars)) return;
+    this.painted = { vars: this.vars, mode: this.mode };
     this.style.cssText = "";
     if (!this.vars) return;
     applyScoped(this, BASELINE[this.mode]);
@@ -242,7 +258,7 @@ export class HatsLiteThumb extends LitElement {
       return html`<div class="state unavailable"><span class="reason">${reason}</span></div>`;
     }
     if (!this.vars) {
-      return html`<div class="state skeleton" role="status" aria-label=${s.thumbLoading}></div>`;
+      return html`<div class="state skeleton" aria-hidden="true"></div>`;
     }
     return html`
       <div class="stage" aria-hidden="true">

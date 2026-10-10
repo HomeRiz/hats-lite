@@ -22,6 +22,10 @@ function haystack(entry: CatalogEntry): string {
   return `${entry.full_name} ${entry.description}`.toLowerCase();
 }
 
+function hasWord(text: string, word: string): boolean {
+  return new RegExp(`(^|[^a-z0-9])${word}([^a-z0-9]|$)`).test(text);
+}
+
 function hasBlock(block: Record<string, string> | undefined): boolean {
   return !!block && Object.keys(block).length > 0;
 }
@@ -42,16 +46,17 @@ export function passesFilter(
   entry: CatalogEntry,
   theme: CachedTheme | undefined,
   flags?: IndexFlags,
+  installed: boolean = entry.installed,
 ): boolean {
   const known = theme === undefined ? flags : undefined;
   const text = haystack(entry);
   if (filter === "all") return true;
-  if (filter === "installed") return entry.installed;
+  if (filter === "installed") return installed;
   if (filter === "dark") {
-    return text.includes("dark") || hasBlock(theme?.modes?.dark) || known?.dark === true;
+    return hasWord(text, "dark") || hasBlock(theme?.modes?.dark) || known?.dark === true;
   }
   if (filter === "light") {
-    return text.includes("light") || hasBlock(theme?.modes?.light) || known?.light === true;
+    return hasWord(text, "light") || hasBlock(theme?.modes?.light) || known?.light === true;
   }
   return (
     /glass|frost|blur/.test(text) ||

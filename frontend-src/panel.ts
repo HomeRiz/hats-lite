@@ -1,19 +1,23 @@
-import { LitElement, html, nothing } from "lit";
+import { LitElement, html, nothing, type PropertyValues } from "lit";
 import { styleMap } from "lit/directives/style-map.js";
 import "./panel/browse";
 import "./panel/preview";
 import "./panel/designerTab";
 import { resolveVars } from "./lib/previewScope";
+import type { HatsLiteBrowse } from "./panel/browse";
+import { BundleCache, loadFileTheme } from "./panel/browseBundles";
+import { KnownNames, sameList } from "./panel/browseNames";
 import {
   type CatalogEntry,
   type PanelHass,
   type PreviewCandidate,
   type PreviewMode,
+  type ModeChangeDetail,
   type ThemeBundle,
   type ThemeSavedDetail,
   type ThemeSelectedDetail,
 } from "./panel/contract";
-import { normalizeTheme, repoUrlFor } from "./panel/previewData";
+import { normalizeTheme, repoUrlFor, themesDiffer } from "./panel/previewData";
 import { inUse } from "./panel/shellTheme";
 import { shellStyles } from "./panel/styles";
 import { strings } from "./panel/strings";
@@ -35,8 +39,10 @@ export class HatsLitePanel extends LitElement {
     tab: { state: true },
     entry: { state: true },
     fileThemes: { state: true },
+    fileNames: { state: true },
     chosenName: { state: true },
     candidate: { state: true },
+    previewMode: { state: true },
   };
 
   static styles = shellStyles;
@@ -48,8 +54,14 @@ export class HatsLitePanel extends LitElement {
   tab: TabId = "browse";
   entry: CatalogEntry | null = null;
   fileThemes: ThemeBundle = {};
+  fileNames: string[] = [];
   chosenName = "";
   candidate: PreviewCandidate | null = null;
+  previewMode?: PreviewMode;
+  private installedNames: string[] = [];
+  private bundles = new BundleCache();
+  private known = new KnownNames();
+  private pickToken = 0;
 
   private tabId(id: TabId): string {
     return `tab-${id}`;
@@ -100,39 +112,97 @@ export class HatsLitePanel extends LitElement {
     this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
   };
 
-  private setCandidate(name: string): void {
-    if (!this.entry) return;
-    const stored = this.fileThemes[name];
-    if (!stored) return;
-    const theme = normalizeTheme(stored);
+  protected willUpdate(changed: PropertyValues): void {
+    if (!changed.has("hass")) return;
+    const names = Object.keys(this.hass?.themes?.themes ?? {});
+    if (!sameList(names, this.installedNames)) this.installedNames = names;
+    if (this.candidate) this.refreshCandidate();
+  }
+
+  private buildCandidate(name: string): PreviewCandidate | null {
+    const entry = this.entry;
+    if (!entry || !Object.prototype.hasOwnProperty.call(this.fileThemes, name)) return null;
+    const theme = normalizeTheme(this.fileThemes[name] as unknown as Record<string, unknown>);
     const mode: PreviewMode = this.hass?.themes?.darkMode ? "dark" : "light";
-    const installed = Object.prototype.hasOwnProperty.call(this.hass?.themes?.themes ?? {}, name);
-    this.chosenName = name;
-    this.candidate = {
+    const installed = this.installedNames.includes(name);
+    const stored = this.hass?.themes?.themes;
+    const live = stored && Object.prototype.hasOwnProperty.call(stored, name) ? stored[name] : undefined;
+    const nameCollision = installed && !entry.installed && themesDiffer(live, theme);
+    return {
       name,
       vars: resolveVars(theme, mode),
       entry: theme,
       installed,
-      nameCollision: installed && !this.entry.installed,
-      repoUrl: repoUrlFor(this.entry.full_name),
-      canApply: installed,
+      nameCollision,
+      repoUrl: repoUrlFor(entry.full_name),
+      canApply: installed && !nameCollision,
     };
   }
 
+  private refreshCandidate(): void {
+    const current = this.candidate;
+    const next = this.buildCandidate(this.chosenName);
+    if (!current || !next) return;
+    const same =
+      current.installed === next.installed &&
+      current.nameCollision === next.nameCollision &&
+      current.canApply === next.canApply &&
+      JSON.stringify(current.vars) === JSON.stringify(next.vars);
+    if (!same) this.candidate = next;
+  }
+
+  private setCandidate(name: string): void {
+    const next = this.buildCandidate(name);
+    if (!next) return;
+    this.chosenName = name;
+    this.candidate = next;
+  }
+
   private onThemeSelected = (event: Event): void => {
-    const detail = (event as CustomEvent<ThemeSelectedDetail>).detail;
+    const detail = (event as CustomEvent<ThemeSelectedDetail & { mode?: PreviewMode }>).detail;
     const names = Object.keys(detail?.themes ?? {});
     if (names.length === 0) return;
+    const gallery = this.renderRoot.querySelector<HatsLiteBrowse>("hats-lite-browse");
+    this.previewMode = detail.mode ?? gallery?.mode;
+    const first = detail.theme && names.includes(detail.theme) ? detail.theme : names[0];
+    this.pickToken += 1;
     this.entry = detail.entry;
     this.fileThemes = detail.themes;
-    this.setCandidate(names[0]);
+    this.fileNames = [...new Set([...(detail.names ?? []), ...names])];
+    this.bundles.set(detail.entry, first, { themes: detail.themes, names: this.fileNames, theme: first });
+    this.setCandidate(first);
     this.select("preview");
     void this.focusTab("preview");
   };
 
-  private onFileThemeChange = (event: Event): void => {
-    this.setCandidate((event.target as HTMLSelectElement).value);
+  private onPreviewMode = (event: Event): void => {
+    const mode = (event as CustomEvent<ModeChangeDetail>).detail?.mode;
+    if (mode) this.previewMode = mode;
   };
+
+  private onFileThemeChange = (event: Event): void => {
+    const name = (event.target as HTMLSelectElement).value;
+    if (Object.prototype.hasOwnProperty.call(this.fileThemes, name)) {
+      this.pickToken += 1;
+      this.setCandidate(name);
+      return;
+    }
+    void this.fetchFileTheme(name);
+  };
+
+  private async fetchFileTheme(name: string): Promise<void> {
+    const entry = this.entry;
+    if (!entry) return;
+    const token = ++this.pickToken;
+    try {
+      const opened = await loadFileTheme(this.hass, this.known, this.bundles, entry, name);
+      if (token !== this.pickToken || entry !== this.entry) return;
+      this.fileThemes = opened.themes;
+      this.setCandidate(name);
+    } catch {
+      if (token === this.pickToken) this.requestUpdate();
+    }
+  }
 
   private onThemeSaved = (event: Event): void => {
     const detail = (event as CustomEvent<ThemeSavedDetail>).detail;
@@ -185,7 +255,7 @@ export class HatsLitePanel extends LitElement {
   }
 
   private renderFileThemes() {
-    const names = Object.keys(this.fileThemes);
+    const names = this.fileNames;
     if (names.length < 2) return nothing;
     return html`
       <label class="file-theme">
@@ -225,7 +295,12 @@ export class HatsLitePanel extends LitElement {
           tabindex="-1"
           ?hidden=${this.tab !== "browse"}
         >
-          <hats-lite-browse .hass=${this.hass}></hats-lite-browse>
+          <hats-lite-browse
+            .hass=${this.hass}
+            .installedThemes=${this.installedNames}
+            .currentTheme=${this.hass?.selectedTheme?.theme ?? this.hass?.themes?.theme ?? "default"}
+            .darkMode=${this.hass?.themes?.darkMode}
+          ></hats-lite-browse>
         </section>
         <section
           class="panel"
@@ -237,7 +312,12 @@ export class HatsLitePanel extends LitElement {
         >
           ${this.rendered.has("preview")
             ? html`${this.renderFileThemes()}
-              <hats-lite-preview .hass=${this.hass} .candidate=${this.candidate}></hats-lite-preview>`
+              <hats-lite-preview
+                .hass=${this.hass}
+                .candidate=${this.candidate}
+                .mode=${this.previewMode}
+                @hats-lite-mode-change=${this.onPreviewMode}
+              ></hats-lite-preview>`
             : nothing}
         </section>
         <section

@@ -4,9 +4,14 @@ import type { AtlasStore } from "./browseAtlas";
 import type { PreviewMode } from "./contract";
 import { stringsBrowse } from "./strings.browse";
 
-export function renderAtlasThumb(store: AtlasStore, fullName: string, mode: PreviewMode) {
-  const tile = store.tile(fullName);
-  const theme = store.theme(fullName);
+export function renderAtlasThumb(
+  store: AtlasStore,
+  fullName: string,
+  mode: PreviewMode,
+  commit?: string | null,
+) {
+  const tile = store.tile(fullName, commit);
+  const theme = store.theme(fullName, commit);
   if (!tile || !theme) return nothing;
   const style = {
     backgroundImage: `url("${store.imageUrl(mode)}")`,

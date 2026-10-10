@@ -61,6 +61,29 @@ export async function fetchEntry(
   }
 }
 
+export type DashboardPick = {
+  hit?: { entry: Extract<DashboardEntry, { status: "ok" }>; urlPath: string | null };
+  entries: DashboardEntry[];
+  stale: boolean;
+};
+
+export async function pickDashboard(
+  options: Array<{ url_path: string | null }>,
+  load: (urlPath: string | null) => Promise<DashboardEntry>,
+  isStale: () => boolean,
+): Promise<DashboardPick> {
+  const entries: DashboardEntry[] = [];
+  for (const option of options) {
+    const entry = await load(option.url_path);
+    if (isStale()) return { entries, stale: true };
+    entries.push(entry);
+    if (entry.status === "ok" && hasCards(entry.config)) {
+      return { hit: { entry, urlPath: option.url_path }, entries, stale: false };
+    }
+  }
+  return { entries, stale: false };
+}
+
 export function hasCards(config: LovelaceConfig | undefined): boolean {
   return config ? viewsOf(config).some((view) => viewCards(view).length > 0) : false;
 }
@@ -80,10 +103,10 @@ export function sampleConfig(states: Record<string, unknown> | undefined): Lovel
     .sort();
   let domains = [...PREFERRED.filter((domain) => byDomain.has(domain)), ...others];
   if (domains.length === 0) domains = [...byDomain.keys()].sort();
-  const titles = s.domainTitles as Record<string, string>;
+  const titles = new Map(Object.entries(s.domainTitles));
   const cards = domains.slice(0, MAX_SAMPLE_CARDS).map((domain) => ({
     type: "entities",
-    title: titles[domain] ?? domain,
+    title: titles.get(domain) ?? domain,
     entities: (byDomain.get(domain) ?? []).sort().slice(0, MAX_SAMPLE_ENTITIES),
   }));
   if (cards.length === 0) return undefined;

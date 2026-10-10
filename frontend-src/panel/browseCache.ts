@@ -1,6 +1,7 @@
 import type { ThemeEntry } from "../lib/types";
 import { isRecord, normalizeTheme } from "./previewData";
-import type { ThemeBundle } from "./contract";
+import { resolveVars } from "../lib/previewScope";
+import type { PreviewMode, ThemeBundle } from "./contract";
 
 export const THEME_CACHE_KEY = "hats_lite_theme_cache";
 export const THEME_CACHE_MAX = 120;
@@ -14,7 +15,7 @@ export type CachedTheme = {
 
 function strictMap(value: unknown): Record<string, string> | null {
   if (!isRecord(value)) return null;
-  const out: Record<string, string> = {};
+  const out: Record<string, string> = Object.create(null);
   for (const [key, entry] of Object.entries(value)) {
     if (typeof entry !== "string") return null;
     out[key] = entry;
@@ -44,6 +45,15 @@ export function firstTheme(bundle: ThemeBundle): CachedTheme | null {
   if (!isRecord(stored)) return null;
   const entry = normalizeTheme(stored);
   return { name, vars: entry.vars, modes: entry.modes };
+}
+
+const resolved = new WeakMap<CachedTheme, Partial<Record<PreviewMode, Record<string, string>>>>();
+
+export function cachedVars(theme: CachedTheme, mode: PreviewMode): Record<string, string> {
+  const memo = resolved.get(theme) ?? {};
+  resolved.set(theme, memo);
+  memo[mode] ??= resolveVars(theme, mode);
+  return memo[mode];
 }
 
 function tooLarge(theme: CachedTheme): boolean {
@@ -76,35 +86,46 @@ export class ThemeCache {
     }
   }
 
-  private trim(): void {
+  private trim(): string[] {
+    const evicted: string[] = [];
     while (this.slots.size > THEME_CACHE_MAX) {
       const oldest = this.slots.keys().next().value;
-      if (oldest === undefined) return;
+      if (oldest === undefined) break;
       this.slots.delete(oldest);
+      evicted.push(oldest);
     }
+    return evicted;
   }
 
-  private touch(key: string): Slot | undefined {
+  get size(): number {
+    return this.slots.size;
+  }
+
+  has(key: string): boolean {
+    return this.slots.has(key);
+  }
+
+  touch(key: string): void {
     const slot = this.slots.get(key);
-    if (!slot) return undefined;
+    if (!slot) return;
     this.slots.delete(key);
     this.slots.set(key, slot);
-    return slot;
   }
 
   get(key: string): CachedTheme | undefined {
-    return this.touch(key)?.theme;
+    return this.slots.get(key)?.theme;
   }
 
   bundle(key: string): ThemeBundle | undefined {
     return this.slots.get(key)?.bundle;
   }
 
-  set(key: string, theme: CachedTheme, bundle?: ThemeBundle): void {
+  set(key: string, theme: CachedTheme, bundle?: ThemeBundle): string[] {
     this.slots.delete(key);
     this.slots.set(key, { theme, bundle });
-    this.trim();
+    const evicted = this.trim();
     this.persist();
+    return evicted;
   }
 
   private persist(): void {

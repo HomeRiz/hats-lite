@@ -10,7 +10,7 @@ type TrialHost = {
 export async function runTrial(
   hass: PanelHass | undefined,
   candidate: PreviewCandidate,
-  mode: PreviewMode,
+  mode?: PreviewMode,
 ): Promise<string> {
   const host = (window as unknown as TrialHost).hatsLite;
   if (!host) return s.trialUnavailable;
@@ -20,4 +20,15 @@ export async function runTrial(
   } catch {
     return s.trialFailed;
   }
+}
+
+export function explicitMode(
+  userMode: PreviewMode | undefined,
+  mode: PreviewMode | undefined,
+  hass: PanelHass | undefined,
+): PreviewMode | undefined {
+  if (userMode) return userMode;
+  if (!mode) return undefined;
+  const live: PreviewMode = hass?.themes?.darkMode ? "dark" : "light";
+  return mode === live ? undefined : mode;
 }

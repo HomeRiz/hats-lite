@@ -81,7 +81,7 @@ describe("hats-lite-browse", () => {
     const event = listener.mock.calls[0][0] as CustomEvent<ThemeSelectedDetail>;
     expect(event.bubbles).toBe(true);
     expect(event.composed).toBe(true);
-    expect(event.detail).toEqual({ entry: catalog[0], themes: bundle });
+    expect(event.detail).toEqual({ entry: catalog[0], themes: bundle, names: ["aurora"], theme: "aurora" });
   });
 
   it("opens the same preview from the thumbnail button", async () => {

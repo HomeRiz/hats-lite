@@ -61,8 +61,31 @@ export function matchesQuery(entry: CatalogEntry, q: string): boolean {
   );
 }
 
+export type ErrorKind = "limited" | "transient" | "permanent";
+
+const PERMANENT_CODES = new Set([
+  "invalid_theme",
+  "theme_too_large",
+  "not_found",
+  "invalid_request",
+  "not_in_catalog",
+]);
+
+function field(err: unknown, key: "code" | "message"): string {
+  if (!err || typeof err !== "object" || !(key in err)) return "";
+  const value = (err as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : "";
+}
+
+export function classifyError(err: unknown): ErrorKind {
+  const code = field(err, "code");
+  if (PERMANENT_CODES.has(code)) return "permanent";
+  if (code === "rate_limited" || /\bstatus (403|429)\b/.test(field(err, "message"))) {
+    return "limited";
+  }
+  return "transient";
+}
+
 export function isRateLimited(err: unknown): boolean {
-  if (!err || typeof err !== "object" || !("message" in err)) return false;
-  const message = (err as { message: unknown }).message;
-  return typeof message === "string" && /\bstatus (403|429)\b/.test(message);
+  return classifyError(err) === "limited";
 }
