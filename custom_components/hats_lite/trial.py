@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 
 from .const import CONFIRM_SECONDS, REVERT_GRACE_SECONDS, TRY_SECONDS
@@ -49,13 +50,14 @@ def trial_from_dict(data):
     try:
         if not isinstance(data, dict) or not isinstance(data["user_id"], str):
             return None
+        times = [float(data[k]) for k in ("started_at", "try_until", "confirm_until")]
+        if not all(math.isfinite(t) for t in times):
+            return None
         return Trial(
             data["user_id"],
             dict(data["previous"]),
             dict(data["candidate"]),
-            float(data["started_at"]),
-            float(data["try_until"]),
-            float(data["confirm_until"]),
+            *times,
         )
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError, OverflowError):
         return None

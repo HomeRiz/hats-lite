@@ -1,47 +1,26 @@
 import type { Selection, TrialInfo } from "./lib/types";
+import { install } from "./applierInstall";
 import { phaseAt, secondsLeft, serverOffset, serverTime } from "./lib/trialMachine";
 import { callWS, subscribe, type Hass } from "./lib/ws";
 import { createOverlay } from "./confirmOverlay";
 import { clearPending, resolvePending, restoreDetail, writePending } from "./pendingTrial";
 import { markHandled, resolveHandledOutcome } from "./handledOutcome";
-
-type ApplierHass = Hass & {
-  selectedTheme?: { theme?: string; dark?: boolean; primaryColor?: string; accentColor?: string } | null;
-};
-
-export interface ApplierDeps {
-  getHass(): ApplierHass | undefined;
-  fire(name: string, detail: object): void;
-  now(): number;
-  mount(el: HTMLElement): void;
-  setTimer(fn: () => void, ms: number): number;
-  clearTimer(id: number): void;
-  trustedOnly?: boolean;
-}
-
-type StateResult = { trial: TrialInfo | null; now: number; outcome?: unknown };
-type RevertEvent = { type?: string; selection?: Selection; started_at?: number };
-
-const SUBSCRIBE_RETRIES = 3;
-const SUBSCRIBE_RETRY_MS = 5000;
-const REFRESH_RETRIES = 5;
-const REFRESH_RETRY_MS = 3000;
-const WS_TIMEOUT_MS = 8000;
-const NOT_READY = "Home Assistant is not ready";
-const TIMED_OUT = "Home Assistant did not answer in time";
-const DISPOSED = "disposed";
-
-function errorCode(err: unknown): string | undefined {
-  if (typeof err === "object" && err !== null && "code" in err) {
-    return String((err as { code: unknown }).code);
-  }
-  return undefined;
-}
-
-function countdownLabel(seconds: number, offline: boolean): string {
-  const text = `Reverting in ${seconds} ${seconds === 1 ? "second" : "seconds"}`;
-  return offline ? `Could not reach Home Assistant. ${text}.` : text;
-}
+import {
+  DISPOSED,
+  NOT_READY,
+  REFRESH_RETRIES,
+  REFRESH_RETRY_MS,
+  TIMED_OUT,
+  WS_TIMEOUT_MS,
+  countdownLabel,
+  errorCode,
+  type ApplierDeps,
+  type RevertEvent,
+  type StateResult,
+} from "./applierUtil";
+import { readSelection } from "./effective";
+import { createEffective } from "./effectiveController";
+import { createSubscription } from "./subscriptionController";
 
 export function createApplier(deps: ApplierDeps) {
   let hass: Hass | undefined;
@@ -56,9 +35,16 @@ export function createApplier(deps: ApplierDeps) {
   const laterIds = new Set<number>();
   const applyRevert = (selection: Selection) => deps.fire("settheme", restoreDetail(selection));
   const pendingRejects = new Set<(err: Error) => void>();
-  let unsubscribe: (() => void) | null = null;
   let started = false;
   let disposed = false;
+  let reverting = false;
+  let readyConn: Hass["connection"] | null = null;
+  let effectiveStarted = false;
+  const onReady = () => {
+    void effective.refresh();
+    subscription.start();
+  };
+  const onDisconnected = () => subscription.pause();
 
   const overlay = createOverlay({
     mount: (el) => deps.mount(el),
@@ -70,6 +56,31 @@ export function createApplier(deps: ApplierDeps) {
   function current(): Hass | undefined {
     return hass ?? deps.getHass();
   }
+
+  const effective = createEffective({
+    call: (msg) => {
+      const h = current();
+      return h ? timed(callWS(h, msg)) : Promise.reject(new Error(NOT_READY));
+    },
+    current: () => readSelection(deps.getHass()?.selectedTheme),
+    themes: () => deps.getHass()?.themes?.themes,
+    fire: (detail) => deps.fire("settheme", detail),
+    trialRunning: () => trial !== null || reverting,
+    later: (fn, ms) => later(fn, ms),
+    disposed: () => disposed,
+    now: () => deps.now(),
+  });
+
+  const subscription = createSubscription<RevertEvent>({
+    hass: () => current(),
+    onEvent: (event) => onEvent(event),
+    onLate: () => void effective.refresh(),
+    schedule: (fn, ms) => later(fn, ms),
+    cancel: (id) => {
+      laterIds.delete(id);
+      deps.clearTimer(id);
+    },
+  });
 
   function timed<T>(pending: Promise<T>): Promise<T> {
     if (disposed) return Promise.reject(new Error(DISPOSED));
@@ -95,13 +106,14 @@ export function createApplier(deps: ApplierDeps) {
     return new Promise((resolve, reject) => waiters.push({ resolve, reject }));
   }
 
-  function later(fn: () => void, ms: number): void {
-    if (disposed) return;
+  function later(fn: () => void, ms: number): number {
+    if (disposed) return -1;
     const id = deps.setTimer(() => {
       laterIds.delete(id);
       if (!disposed) fn();
     }, ms);
     laterIds.add(id);
+    return id;
   }
 
   function clearTick(): void {
@@ -178,6 +190,7 @@ export function createApplier(deps: ApplierDeps) {
     const previous = trial.previous;
     const startedAt = trial.started_at;
     busyGeneration = g;
+    reverting = true;
     endTrial();
     try {
       const h = current();
@@ -203,6 +216,8 @@ export function createApplier(deps: ApplierDeps) {
       }
     } finally {
       if (busyGeneration === g) busyGeneration = null;
+      reverting = false;
+      void effective.refresh();
     }
   }
 
@@ -240,10 +255,15 @@ export function createApplier(deps: ApplierDeps) {
     if (g === generation) {
       endTrial();
       clearPending(startedAt);
+      void effective.refresh();
     }
   }
 
   function onEvent(event: RevertEvent): void {
+    if (event.type === "effective") {
+      effective.onEvent(event);
+      return;
+    }
     if (disposed || event.type !== "revert" || !event.selection) return;
     if (trial && typeof event.started_at === "number" && event.started_at < trial.started_at) return;
     generation += 1;
@@ -252,20 +272,19 @@ export function createApplier(deps: ApplierDeps) {
     applyRevert(event.selection);
     clearPending(typeof event.started_at === "number" ? event.started_at : undefined);
     if (typeof event.started_at === "number") markHandled(event.started_at, current());
-  }
-
-  async function trySubscribe(h: Hass, attempt: number): Promise<void> {
-    try {
-      const stop = await subscribe<RevertEvent>(h, { type: "hats_lite/subscribe" }, onEvent);
-      if (disposed) stop();
-      else unsubscribe = stop;
-    } catch {
-      if (attempt < SUBSCRIBE_RETRIES) later(() => void trySubscribe(h, attempt + 1), SUBSCRIBE_RETRY_MS);
-    }
+    void effective.refresh();
   }
 
   async function loadWithRetry(attempt: number): Promise<void> {
-    const ok = await refresh(true);
+    let ok = false;
+    try {
+      ok = await refresh(true);
+    } finally {
+      if (!effectiveStarted) {
+        effectiveStarted = true;
+        void effective.refresh();
+      }
+    }
     if (!ok && attempt < REFRESH_RETRIES) later(() => void loadWithRetry(attempt + 1), REFRESH_RETRY_MS);
   }
 
@@ -278,7 +297,10 @@ export function createApplier(deps: ApplierDeps) {
     if (!started) {
       started = true;
       void loadWithRetry(0);
-      void trySubscribe(next, 0);
+      subscription.start();
+      readyConn = next.connection;
+      readyConn.addEventListener?.("ready", onReady);
+      readyConn.addEventListener?.("disconnected", onDisconnected);
     }
   }
 
@@ -334,56 +356,14 @@ export function createApplier(deps: ApplierDeps) {
     rejects.forEach((reject) => reject(new Error(DISPOSED)));
     trial = null;
     overlay.hide();
+    readyConn?.removeEventListener?.("ready", onReady);
+    readyConn?.removeEventListener?.("disconnected", onDisconnected);
+    readyConn = null;
     waiters = [];
-    if (unsubscribe) {
-      unsubscribe();
-      unsubscribe = null;
-    }
+    subscription.dispose();
   }
 
-  return { onHass, dispose, startTrial, refresh, markUnavailable, overlayRoot: () => overlay.shadowRoot() };
+  return { onHass, dispose, startTrial, refresh, markUnavailable, refreshEffective: () => effective.refresh(), overlayRoot: () => overlay.shadowRoot() };
 }
 
-declare global {
-  interface Window {
-    hatsLite?: { startTrial(previous: Selection, candidate: Selection): Promise<void> };
-  }
-}
-
-type HomeAssistantElement = HTMLElement & { hass?: Hass };
-
-function install(): void {
-  let element: HomeAssistantElement | null = null;
-  const applier = createApplier({
-    getHass: () => {
-      element = element ?? document.querySelector<HomeAssistantElement>("home-assistant");
-      return element?.hass;
-    },
-    fire: (name, detail) => {
-      const target = element ?? document.querySelector("home-assistant") ?? document;
-      target.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
-    },
-    now: () => Date.now() / 1000,
-    mount: (el) => {
-      document.documentElement.appendChild(el);
-    },
-    setTimer: (fn, ms) => window.setTimeout(fn, ms),
-    clearTimer: (id) => window.clearTimeout(id),
-  });
-  window.hatsLite = { startTrial: (previous, candidate) => applier.startTrial(previous, candidate) };
-  let attempts = 0;
-  const poll = () => {
-    const el = element ?? document.querySelector<HomeAssistantElement>("home-assistant");
-    if (el) element = el;
-    if (el?.hass) {
-      applier.onHass(el.hass);
-      return;
-    }
-    attempts += 1;
-    if (attempts < 240) window.setTimeout(poll, 500);
-    else applier.markUnavailable();
-  };
-  poll();
-}
-
-install();
+install(createApplier);

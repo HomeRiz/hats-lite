@@ -3,6 +3,7 @@ import { createApplier } from "./applier";
 import type { Selection, TrialInfo } from "./lib/types";
 import { PENDING_KEY } from "./pendingTrial";
 import { HANDLED_KEY } from "./handledOutcome";
+import { OWN_KEY } from "./effectiveOwn";
 
 export const PREVIOUS: Selection = { theme: "Old" };
 export const CANDIDATE: Selection = { theme: "New", dark: true };
@@ -28,6 +29,7 @@ function clearStorage(): void {
   try {
     window.localStorage.removeItem(PENDING_KEY);
     window.localStorage.removeItem(HANDLED_KEY);
+    window.localStorage.removeItem(OWN_KEY);
   } catch {
     return;
   }
@@ -59,12 +61,33 @@ export function setup(
     "hats_lite/trial_cancel": () => ({ revert: PREVIOUS }),
     "hats_lite/trial_start": () => ({ trial: trialAt(SERVER_START) }),
     "hats_lite/outcome_ack": () => ({ cleared: true }),
+    "hats_lite/effective": () => ({ selection: null, source: "none", until: null, own: null, opt_out: false }),
+    "hats_lite/own_get": () => ({ own: null }),
+    "hats_lite/own_set": () => ({ own: null }),
+    "hats_lite/own_clear": () => ({ cleared: true }),
   };
-  const control: { subscribeError: Error | null } = { subscribeError: null };
-  let eventCb: ((event: unknown) => void) | null = null;
-  const unsub = vi.fn();
+  const control: {
+    subscribeError: Error | null;
+    subscribeQueue: Error[];
+    unsubError: Error | null;
+    unsubRejects: Error | null;
+  } = { subscribeError: null, subscribeQueue: [], unsubError: null, unsubRejects: null };
+  const liveCbs = new Set<{ cb: (event: unknown) => void }>();
+  const unsub = vi.fn((): Promise<void> | void => {
+    if (control.unsubError) throw control.unsubError;
+    if (control.unsubRejects) return Promise.reject(control.unsubRejects);
+  });
+  const listeners: Record<string, Array<() => void>> = {};
   const hass = {
     connection: {
+      addEventListener: vi.fn((type: string, cb: () => void) => {
+        (listeners[type] ??= []).push(cb);
+      }),
+      removeEventListener: vi.fn((type: string, cb: () => void) => {
+        const list = listeners[type] ?? [];
+        const at = list.indexOf(cb);
+        if (at >= 0) list.splice(at, 1);
+      }),
       sendMessagePromise: vi.fn(async (msg: Record<string, unknown>) => {
         calls.push(msg);
         events.push(String(msg.type));
@@ -74,12 +97,19 @@ export function setup(
       }),
       subscribeMessage: vi.fn(async (cb: (event: unknown) => void, msg: Record<string, unknown>) => {
         calls.push(msg);
+        const queued = control.subscribeQueue.shift();
+        if (queued) throw queued;
         if (control.subscribeError) throw control.subscribeError;
-        eventCb = cb;
-        return unsub;
+        const entry = { cb };
+        liveCbs.add(entry);
+        return () => {
+          liveCbs.delete(entry);
+          return unsub();
+        };
       }),
     },
-    selectedTheme: options.selectedTheme,
+    selectedTheme: options.selectedTheme as { theme?: string; dark?: boolean; primaryColor?: string } | null | undefined,
+    themes: undefined as { themes: Record<string, unknown> } | undefined,
   };
   const fire = vi.fn((name: string, detail: object) => {
     events.push(`fire:${name}:${JSON.stringify(detail)}`);
@@ -112,7 +142,11 @@ export function setup(
     setTimer,
     clearTimer,
     unsub,
-    emit: (event: unknown) => eventCb?.(event),
+    emit: (event: unknown) => [...liveCbs].forEach((entry) => entry.cb(event)),
+    liveCount: () => liveCbs.size,
+    reconnect: () => [...(listeners.ready ?? [])].forEach((cb) => cb()),
+    disconnect: () => [...(listeners.disconnected ?? [])].forEach((cb) => cb()),
+    readyCount: () => (listeners.ready ?? []).length,
     count: (type: string) => calls.filter((c) => c.type === type).length,
   };
 }

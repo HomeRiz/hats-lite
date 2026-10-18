@@ -1,0 +1,58 @@
+apply_theme:
+  fields:
+    theme:
+      required: true
+      example: "Midnight"
+      selector:
+        text:
+    mode:
+      default: auto
+      selector:
+        select:
+          translation_key: mode
+          options:
+            - auto
+            - dark
+            - light
+    user:
+      selector:
+        text:
+    duration:
+      selector:
+        number:
+          min: 60
+          max: 2592000
+          unit_of_measurement: s
+          mode: box
+assign_theme:
+  fields:
+    theme:
+      required: true
+      example: "Midnight"
+      selector:
+        text:
+    mode:
+      default: auto
+      selector:
+        select:
+          translation_key: mode
+          options:
+            - auto
+            - dark
+            - light
+    user:
+      required: true
+      selector:
+        text:
+    duration:
+      selector:
+        number:
+          min: 60
+          max: 2592000
+          unit_of_measurement: s
+          mode: box
+revert_now:
+  fields:
+    user:
+      selector:
+        text:
