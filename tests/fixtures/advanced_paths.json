@@ -1,0 +1,36 @@
+{
+  "valid": [
+    "/hats",
+    "/a/b",
+    "/a0d7b954_hats",
+    "/x-y.z~!$&'()*+,;=:@",
+    "/hats/",
+    "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ],
+  "invalid": [
+    "//evil.test",
+    "http://evil.test",
+    "https://evil.test/x",
+    "javascript:alert(1)",
+    "/a\\b",
+    "/a\nb",
+    "/a\u0000",
+    "/a\t",
+    "/a b",
+    "/a\u007f",
+    "/\u00e9",
+    "hats",
+    "",
+    "/a#b",
+    "/a?x=1",
+    "/#",
+    "/?",
+    "/hats#lite=x",
+    "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    5,
+    null,
+    [
+      "/hats"
+    ]
+  ]
+}
