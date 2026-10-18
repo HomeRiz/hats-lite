@@ -1,0 +1,174 @@
+{
+ "version": 1,
+ "mods": [
+  {
+   "full_name": "thomasloven/lovelace-card-mod",
+   "category": "plugin",
+   "kind": "styling",
+   "description": "Add CSS styles to almost any card, row or part of the dashboard.",
+   "hints": [
+    "hacsfiles/lovelace-card-mod"
+   ]
+  },
+  {
+   "full_name": "Lint-Free-Technology/uix",
+   "category": "integration",
+   "kind": "styling",
+   "description": "UI eXtension: CSS styling for almost any part of Home Assistant, the successor to card-mod.",
+   "hints": [
+    "uix"
+   ]
+  },
+  {
+   "full_name": "Nerwyn/material-you-utilities",
+   "category": "plugin",
+   "kind": "styling",
+   "description": "Material You color themes and component styling for the dashboard.",
+   "hints": [
+    "hacsfiles/material-you-utilities"
+   ]
+  },
+  {
+   "full_name": "snootched/cb-lcars",
+   "category": "plugin",
+   "kind": "styling",
+   "description": "LCARS styling library built on custom button card.",
+   "hints": [
+    "hacsfiles/cb-lcars"
+   ]
+  },
+  {
+   "full_name": "UI-Lovelace-Minimalist/UI",
+   "category": "integration",
+   "kind": "styling",
+   "description": "UI Lovelace Minimalist, a design system and theme for dashboards.",
+   "hints": []
+  },
+  {
+   "full_name": "piitaya/lovelace-mushroom",
+   "category": "plugin",
+   "kind": "cards",
+   "description": "Clean, modern cards with a consistent look.",
+   "hints": [
+    "hacsfiles/lovelace-mushroom"
+   ]
+  },
+  {
+   "full_name": "custom-cards/button-card",
+   "category": "plugin",
+   "kind": "cards",
+   "description": "Highly customizable button cards with templates and per-state styling.",
+   "hints": [
+    "hacsfiles/button-card"
+   ]
+  },
+  {
+   "full_name": "Clooos/Bubble-Card",
+   "category": "plugin",
+   "kind": "cards",
+   "description": "Minimalist pop-up, button and media cards with a bubble look.",
+   "hints": [
+    "hacsfiles/bubble-card"
+   ]
+  },
+  {
+   "full_name": "jcwillox/lovelace-paper-buttons-row",
+   "category": "plugin",
+   "kind": "cards",
+   "description": "Configurable button rows with per-state styling.",
+   "hints": [
+    "hacsfiles/lovelace-paper-buttons-row"
+   ]
+  },
+  {
+   "full_name": "thomasloven/lovelace-layout-card",
+   "category": "plugin",
+   "kind": "layout",
+   "description": "Control the layout of dashboard cards with masonry, grid, vertical and horizontal layouts.",
+   "hints": [
+    "hacsfiles/lovelace-layout-card"
+   ]
+  },
+  {
+   "full_name": "ownbee/bootstrap-grid-card",
+   "category": "plugin",
+   "kind": "layout",
+   "description": "Lay out cards with a Bootstrap style grid.",
+   "hints": [
+    "hacsfiles/bootstrap-grid-card"
+   ]
+  },
+  {
+   "full_name": "ofekashery/vertical-stack-in-card",
+   "category": "plugin",
+   "kind": "layout",
+   "description": "Group cards into one seamless card without borders between them.",
+   "hints": [
+    "hacsfiles/vertical-stack-in-card"
+   ]
+  },
+  {
+   "full_name": "custom-cards/stack-in-card",
+   "category": "plugin",
+   "kind": "layout",
+   "description": "Group cards into a single card without the gaps.",
+   "hints": [
+    "hacsfiles/stack-in-card"
+   ]
+  },
+  {
+   "full_name": "brunosabot/streamline-card",
+   "category": "plugin",
+   "kind": "templating",
+   "description": "Reuse card templates to keep dashboard configuration short.",
+   "hints": [
+    "hacsfiles/streamline-card"
+   ]
+  },
+  {
+   "full_name": "custom-cards/decluttering-card",
+   "category": "plugin",
+   "kind": "templating",
+   "description": "Reuse card templates to declutter dashboard configuration.",
+   "hints": [
+    "hacsfiles/decluttering-card"
+   ]
+  },
+  {
+   "full_name": "iantrich/config-template-card",
+   "category": "plugin",
+   "kind": "templating",
+   "description": "Use templates in card configuration to change how cards look.",
+   "hints": [
+    "hacsfiles/config-template-card"
+   ]
+  },
+  {
+   "full_name": "NemesisRE/kiosk-mode",
+   "category": "plugin",
+   "kind": "chrome",
+   "description": "Hide the header and the sidebar for a clean kiosk look.",
+   "hints": [
+    "hacsfiles/kiosk-mode"
+   ]
+  },
+  {
+   "full_name": "elchininet/custom-sidebar",
+   "category": "plugin",
+   "kind": "chrome",
+   "description": "Personalize the sidebar items, order and style per user or device.",
+   "hints": [
+    "hacsfiles/custom-sidebar"
+   ]
+  },
+  {
+   "full_name": "ngocjohn/sidebar-organizer",
+   "category": "plugin",
+   "kind": "chrome",
+   "description": "Organize the sidebar into groups with custom styling.",
+   "hints": [
+    "hacsfiles/sidebar-organizer"
+   ]
+  }
+ ]
+}

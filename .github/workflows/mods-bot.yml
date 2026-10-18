@@ -1,0 +1,79 @@
+name: Mods bot
+
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mods-bot
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - run: mkdir -p "$RUNNER_TEMP/mods-out"
+      - run: node scripts/mods_update.mjs "$REPORT"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPORT: ${{ runner.temp }}/mods-out/report.md
+      - run: cp custom_components/hats_lite/mods_pinned.json "$RUNNER_TEMP/mods-out/mods_pinned.json"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mods
+          path: ${{ runner.temp }}/mods-out
+          if-no-files-found: error
+          retention-days: 7
+
+  pr:
+    needs: update
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: mods
+          path: ${{ runner.temp }}/mods-out
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - id: validate
+        run: node scripts/mods_validate.mjs "$RUNNER_TEMP/mods-out"
+      - id: diff
+        run: |
+          if cmp -s "$RUNNER_TEMP/mods-out/mods_pinned.json" custom_components/hats_lite/mods_pinned.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            cp "$RUNNER_TEMP/mods-out/mods_pinned.json" custom_components/hats_lite/mods_pinned.json
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - id: date
+        run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      - if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          sign-commits: true
+          branch: mods/update-${{ steps.date.outputs.day }}
+          commit-message: Update the pinned mod set
+          title: Update the pinned mod set
+          body-path: ${{ runner.temp }}/mods-out/report.md
+          add-paths: custom_components/hats_lite/mods_pinned.json
