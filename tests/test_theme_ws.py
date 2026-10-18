@@ -24,7 +24,7 @@ CATALOG = (
             "description": "",
             "stars": 1,
             "installed": False,
-            "last_commit": None,
+            "last_commit": "abc1234",
             "hacs_id": None,
         }
     ],

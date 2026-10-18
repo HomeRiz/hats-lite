@@ -11,15 +11,26 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import DOMAIN
 from .catalog import CatalogError
-from .theme_cache import THEME_CACHE, ThemeLoadError
+from .theme_budget import FETCH_BUDGET
+from .theme_cache import HEX_COMMIT, THEME_CACHE, ThemeLoadError
 from .theme_fetch import ThemeFetchError, fetch_theme_yaml, validate_request
-from .theme_errors import CATALOG_UNAVAILABLE, INVALID_REQUEST, INVALID_THEME, NOT_IN_CATALOG, TOO_LARGE
+from .theme_errors import (
+    CATALOG_UNAVAILABLE,
+    INVALID_REQUEST,
+    INVALID_THEME,
+    NOT_IN_CATALOG,
+    RATE_LIMITED,
+    TOO_LARGE,
+)
 from .theme_sanitizer import ThemeError, ThemeTooLargeError, parse_themes
 
 SUMMARY_MAX_VARS = 300
 SUMMARY_MAX_VALUE = 4000
 MAX_RESPONSE_CHARS = 3 * 1024 * 1024
 TOO_LARGE_MESSAGE = "This theme file is too large to preview"
+HEAD = "HEAD"
+BUSY_MESSAGE = "Too many theme previews, try again in a few minutes"
+MIN_PREFIX = 7
 
 
 PRIORITY_KEYS = (
@@ -94,7 +105,10 @@ def summarize(themes):
 
 
 def _json_size(value):
-    return len(json.dumps(value))
+    try:
+        return len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
+    except ValueError:
+        return None
 
 
 async def load_catalog_for_hass(hass):
@@ -103,12 +117,26 @@ async def load_catalog_for_hass(hass):
     return await load(hass)
 
 
-def _catalog_name(entries, full_name):
+def _catalog_entry(entries, full_name):
     wanted = full_name.lower()
     for entry in entries:
         name = entry.get("full_name")
         if isinstance(name, str) and name.lower() == wanted:
-            return name
+            return entry
+    return None
+
+
+def _canonical_commit(entry, commit):
+    if commit == HEAD:
+        return HEAD
+    known = entry.get("last_commit")
+    if not isinstance(known, str) or not known:
+        return None
+    if not (HEX_COMMIT.match(commit) and HEX_COMMIT.match(known)):
+        return commit if commit == known else None
+    short, long = sorted((commit.lower(), known.lower()), key=len)
+    if short == long or (len(short) >= MIN_PREFIX and long.startswith(short)):
+        return long
     return None
 
 
@@ -119,10 +147,20 @@ def _check_request(msg):
     validate_request(msg["full_name"], msg["commit"], path)
 
 
-async def _load(hass, session, msg, full_name):
+def _admit(user_id):
+    def admit(key, creating):
+        if not FETCH_BUDGET.allow(user_id, key, charge=creating):
+            raise ThemeLoadError(RATE_LIMITED, BUSY_MESSAGE, cacheable=False)
+
+    return admit
+
+
+async def _load(hass, session, msg, full_name, user_id, commit):
+    key = (full_name, commit, msg.get("path"))
+
     async def produce():
         try:
-            text = await fetch_theme_yaml(session, full_name, msg["commit"], msg.get("path"))
+            text = await fetch_theme_yaml(session, full_name, commit, msg.get("path"))
         except ThemeFetchError as err:
             raise ThemeLoadError(err.code, str(err), transient=err.transient) from err
         try:
@@ -134,8 +172,7 @@ async def _load(hass, session, msg, full_name):
         except Exception as err:
             raise ThemeLoadError(INVALID_THEME, "The theme file could not be read") from err
 
-    key = (full_name, msg["commit"], msg.get("path"))
-    return await THEME_CACHE.load(key, produce)
+    return await THEME_CACHE.load(key, produce, _admit(user_id))
 
 
 @websocket_api.websocket_command(
@@ -163,13 +200,18 @@ async def ws_theme(hass, connection, msg):
     except CatalogError:
         connection.send_error(msg["id"], CATALOG_UNAVAILABLE, "Theme catalog unavailable")
         return
-    full_name = _catalog_name(entries, msg["full_name"])
-    if full_name is None:
+    entry = _catalog_entry(entries, msg["full_name"])
+    if entry is None:
         connection.send_error(msg["id"], NOT_IN_CATALOG, "This repository is not in the theme catalog")
         return
+    commit = _canonical_commit(entry, msg["commit"])
+    if commit is None:
+        connection.send_error(msg["id"], INVALID_REQUEST, "This commit is not the catalog version")
+        return
     session = async_get_clientsession(hass)
+    user_id = getattr(connection.user, "id", None)
     try:
-        themes = await _load(hass, session, msg, full_name)
+        themes = await _load(hass, session, msg, entry["full_name"], user_id, commit)
     except ThemeLoadError as err:
         connection.send_error(msg["id"], err.code, err.message)
         return
@@ -182,7 +224,11 @@ async def ws_theme(hass, connection, msg):
         result = {"themes": {msg["theme"]: themes[msg["theme"]]}, "names": list(themes)}
     else:
         result = {"themes": themes, "names": list(themes)}
-    if await hass.async_add_executor_job(_json_size, result) > MAX_RESPONSE_CHARS:
+    size = await hass.async_add_executor_job(_json_size, result)
+    if size is None:
+        connection.send_error(msg["id"], INVALID_THEME, "The theme file could not be read")
+        return
+    if size > MAX_RESPONSE_CHARS:
         connection.send_error(msg["id"], TOO_LARGE, TOO_LARGE_MESSAGE)
         return
     connection.send_result(msg["id"], result)

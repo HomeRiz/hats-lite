@@ -187,3 +187,37 @@ def test_object_prototype_names_are_forbidden(name):
     themes = parse_themes(doc)
     assert list(themes) == ["Ok"]
     assert themes["Ok"]["vars"] == {"primary-color": "blue"}
+
+
+@pytest.mark.parametrize("value", ["\ud800", "red\udfff", "a\x00b", "\x00"])
+def test_unencodable_and_nul_values_are_dropped(value):
+    assert sanitize_value(value, key="primary-color") is None
+
+
+@pytest.mark.parametrize("libyaml", [True, False])
+@pytest.mark.parametrize("escape", ["\\ud800", "\\udfff", "\\0", "\\x00"])
+def test_escaped_surrogates_and_nul_never_survive(monkeypatch, libyaml, escape):
+    from custom_components.hats_lite import theme_loader
+
+    monkeypatch.setattr(theme_loader, "LIBYAML", libyaml)
+    doc = f'T:\n  primary-color: red\n  accent-color: "x{escape}"\n'
+    try:
+        themes = parse_themes(doc)
+    except ThemeError:
+        return
+    assert themes["T"]["vars"] == {"primary-color": "red"}
+
+
+@pytest.mark.parametrize("use", ["{<<: *x}", "*x"])
+def test_shared_values_are_sanitized_once(use):
+    lines = ["x: &x"] + [f"  k{i}: 'url(https://a/b.png) x'" for i in range(1000)]
+    lines += [f"T{t}: {use}" for t in range(249)]
+    started = time.monotonic()
+    themes = parse_themes("\n".join(lines) + "\n")
+    assert time.monotonic() - started < 1.5
+    assert themes["T7"]["vars"]["k3"] == "url(https://a/b.png) x"
+
+
+def test_memo_keeps_css_blocks_and_types_apart():
+    doc = "T:\n  card-mod-card: 'a { b: c; }'\n  other: 'a { b: c; }'\n  one: 1\n  flag: 1.0\n  yes: true\n"
+    assert parse_themes(doc)["T"]["vars"] == {"card-mod-card": "a { b: c; }", "one": "1", "flag": "1.0"}

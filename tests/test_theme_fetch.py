@@ -318,3 +318,14 @@ async def test_oversize_listing_without_default_file_is_too_large():
     with pytest.raises(ThemeFetchError) as info:
         await fetch_theme_yaml(session, "a/b", "abc1234")
     assert info.value.code == "theme_too_large"
+
+
+async def test_oversize_listing_probes_at_most_four_default_paths():
+    jsd = JSD.replace("a/b@", "a/Big@")
+    tree = TREE.replace("a/b/", "a/Big/")
+    session = Session(_Missing({jsd: _big(), tree: _big()}))
+    with pytest.raises(ThemeFetchError) as info:
+        await fetch_theme_yaml(session, "a/Big", "abc1234")
+    assert info.value.code == "theme_too_large"
+    assert len(session.urls) == 6
+    assert session.urls[2].endswith("/themes/Big.yaml")

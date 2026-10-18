@@ -24,6 +24,7 @@ MAX_COMMIT = 100
 MAX_PATH = 300
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=20, sock_connect=8)
 MAX_TREE_BYTES = 4 * 1024 * 1024
+MAX_DEFAULT_PROBES = 4
 SKIPPED_NAMES = {
     "hacs",
     "config",
@@ -262,7 +263,7 @@ def _default_paths(repo):
                 path = f"{folder}{base}{suffix}"
                 if path not in paths and not _bad_segments(path):
                     paths.append(path)
-    return paths
+    return paths[:MAX_DEFAULT_PROBES]
 
 
 async def _fetch_default(session, full_name, commit, error):

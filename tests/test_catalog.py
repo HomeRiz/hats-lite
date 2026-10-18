@@ -86,3 +86,16 @@ async def test_non_list_hacs_result_falls_back():
 
     entries, source = await load_catalog(hacs, public)
     assert source == "public"
+
+
+@pytest.mark.parametrize("records", [[], [{"full_name": "a/b", "category": "plugin"}]])
+async def test_hacs_without_themes_falls_back_to_public(records):
+    async def hacs():
+        return records
+
+    async def public():
+        return {"1": {"full_name": "x/y", "stargazers_count": 3, "last_commit": "abc1234"}}
+
+    entries, source = await load_catalog(hacs, public)
+    assert source == "public"
+    assert entries[0]["full_name"] == "x/y"

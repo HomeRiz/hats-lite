@@ -31,7 +31,7 @@ class ThemeLoadError(Exception):
 
 
 def _size(result):
-    return len(json.dumps(result))
+    return len(json.dumps(result, ensure_ascii=False).encode("utf-8"))
 
 
 def canonical_key(key):
@@ -131,12 +131,14 @@ class ThemeCache:
         self._store(key, result, size)
         return result
 
-    async def load(self, key, producer):
+    async def load(self, key, producer, admit=None):
         key = canonical_key(key)
         found = self._lookup(key)
         if found is not None:
             return found
         task = self._inflight.get(key)
+        if admit is not None:
+            admit(key, task is None)
         if task is None:
             task = asyncio.ensure_future(self._run(key, producer))
             task.add_done_callback(lambda t: t.cancelled() or t.exception())

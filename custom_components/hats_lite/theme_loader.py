@@ -1,22 +1,26 @@
-import re
-
 import yaml
+from yaml.events import (
+    AliasEvent,
+    CollectionEndEvent,
+    CollectionStartEvent,
+    DocumentStartEvent,
+    MappingStartEvent,
+    ScalarEvent,
+)
 from yaml.nodes import MappingNode, SequenceNode
 
 MAX_MERGED_PAIRS = 300000
-MAX_NODES = 600000
+MAX_NODES = 150000
 MAX_DEPTH = 100
-SHALLOW_DEPTH = 50
+LIBYAML = hasattr(yaml, "CSafeLoader")
+TOO_LARGE = "Theme file is too large"
 NOT_VALID_YAML = "Theme file is not valid YAML"
 TOO_DEEP = "Theme file is too deeply nested"
 MERGE_TAG = "tag:yaml.org,2002:merge"
 VALUE_TAG = "tag:yaml.org,2002:value"
 STR_TAG = "tag:yaml.org,2002:str"
-
-BRACKETS = re.compile(r"[{\[\]}]")
-DEEP_INDENT = re.compile(r"^[ \t]{%d,}\S" % SHALLOW_DEPTH, re.MULTILINE)
-INDICATOR_RUN = re.compile(r"(?:[-?][ \t]+){%d}" % 20)
-OPENERS = frozenset("{[")
+ESCAPE_PROBLEM = "invalid Unicode character escape code"
+RETRY_MAX_CHARS = 200000
 
 
 class ThemeError(ValueError):
@@ -34,7 +38,7 @@ class ThemeTooLargeError(ThemeError):
 def _budget(owner, pairs):
     owner.merged_pairs += pairs
     if owner.merged_pairs > MAX_MERGED_PAIRS:
-        raise ThemeTooLargeError("Theme file is too large")
+        raise ThemeTooLargeError(TOO_LARGE)
 
 
 def _flatten(owner, node):
@@ -69,19 +73,19 @@ def _merge_source(owner, value_node):
 
 def _flatten_node(owner, node):
     merge = []
-    index = 0
-    while index < len(node.value):
-        key_node, value_node = node.value[index]
+    kept = []
+    merged = False
+    for key_node, value_node in node.value:
         if key_node.tag == MERGE_TAG:
-            del node.value[index]
+            merged = True
             merge.extend(_merge_source(owner, value_node))
-        elif key_node.tag == VALUE_TAG:
+            continue
+        if key_node.tag == VALUE_TAG:
             key_node.tag = STR_TAG
-            index += 1
-        else:
-            index += 1
-    if merge:
-        node.value = merge + node.value
+        kept.append((key_node, value_node))
+    if merged:
+        merge.extend(kept)
+        node.value = merge
 
 
 class _GuardMixin:
@@ -99,48 +103,113 @@ class FastLoader(_GuardMixin, getattr(yaml, "CSafeLoader", yaml.SafeLoader)):
     pass
 
 
+class EventBudget:
+    def __init__(self):
+        self.nodes = 0
+        self.depth = 0
+
+    def feed(self, event):
+        if isinstance(event, CollectionStartEvent):
+            self.depth += 1
+            if self.depth > MAX_DEPTH:
+                raise ThemeError(TOO_DEEP)
+        elif isinstance(event, CollectionEndEvent):
+            self.depth -= 1
+            return
+        elif not isinstance(event, (ScalarEvent, AliasEvent)):
+            return
+        self.nodes += 1
+        if self.nodes > MAX_NODES:
+            raise ThemeTooLargeError(TOO_LARGE)
+
+
 class GuardedLoader(_GuardMixin, yaml.SafeLoader):
     def __init__(self, stream):
         super().__init__(stream)
-        self.node_count = 0
-        self.depth = 0
+        self.budget = EventBudget()
+
+    def get_event(self):
+        event = super().get_event()
+        self.budget.feed(event)
+        return event
 
     def compose_mapping_node(self, anchor):
         node = super().compose_mapping_node(anchor)
         self.flatten_mapping(node)
         return node
 
-    def compose_node(self, parent, index):
-        self.node_count += 1
-        if self.node_count > MAX_NODES:
-            raise ThemeTooLargeError("Theme file is too large")
-        self.depth += 1
-        try:
-            if self.depth > MAX_DEPTH:
-                raise ThemeError(TOO_DEEP)
-            return super().compose_node(parent, index)
-        finally:
-            self.depth -= 1
+
+def _prescan(text):
+    budget = EventBudget()
+    for event in yaml.parse(text, Loader=FastLoader):
+        budget.feed(event)
 
 
-def _shallow(text):
-    depth = 0
-    for match in BRACKETS.finditer(text):
-        if match.group() in OPENERS:
-            depth += 1
-            if depth >= SHALLOW_DEPTH:
-                return False
-        elif depth:
-            depth -= 1
-    if DEEP_INDENT.search(text) or INDICATOR_RUN.search(text):
+def _plain_key(event):
+    return isinstance(event, ScalarEvent) and event.anchor is None and event.value != "<<"
+
+
+def _scan_keys(events):
+    budget = EventBudget()
+    keys = []
+    documents = 0
+    is_key = True
+    for event in events:
+        level = budget.depth
+        budget.feed(event)
+        if isinstance(event, DocumentStartEvent):
+            documents += 1
+            if documents > 1:
+                return None
+        if not isinstance(event, (ScalarEvent, AliasEvent, CollectionStartEvent)):
+            continue
+        if getattr(event, "tag", None) is not None:
+            return None
+        if level == 0:
+            if not isinstance(event, MappingStartEvent) or event.anchor is not None:
+                return None
+        elif level == 1:
+            if is_key:
+                if not _plain_key(event):
+                    return None
+                keys.append(event.value)
+            is_key = not is_key
+    return keys
+
+
+def _escape_failure(err, text):
+    if not isinstance(err, yaml.YAMLError) or ("\\u" not in text and "\\U" not in text):
         return False
-    return True
+    return ESCAPE_PROBLEM in str(getattr(err, "problem", "") or "")
+
+
+def top_level_keys(text):
+    if not LIBYAML:
+        return None
+    try:
+        return _scan_keys(yaml.parse(text, Loader=FastLoader))
+    except yaml.YAMLError as err:
+        if _escape_failure(err, text):
+            return None
+        raise
+
+
+def _load(text):
+    if LIBYAML:
+        try:
+            _prescan(text)
+            return yaml.load(text, Loader=FastLoader)
+        except yaml.YAMLError as err:
+            if not _escape_failure(err, text):
+                raise
+            if len(text) > RETRY_MAX_CHARS:
+                raise ThemeTooLargeError(TOO_LARGE) from err
+    return yaml.load(text, Loader=GuardedLoader)
 
 
 def load_yaml(text):
-    loader = FastLoader if _shallow(text) else GuardedLoader
     try:
-        return yaml.load(text, Loader=loader)
+        return _load(text)
     except ThemeError:
         raise
     except (RecursionError, MemoryError) as err:

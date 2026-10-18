@@ -120,13 +120,16 @@ def test_files_without_the_name_text_are_never_parsed(tmp_path, monkeypatch):
     (tmp_path / "other.yaml").write_text("Other:\n  a: b\n")
     (tmp_path / "mine.yaml").write_text("Sunset:\n  a: b\n")
     parsed = []
-    real = theme_save.load_yaml
 
-    def spy(text):
-        parsed.append(text)
-        return real(text)
+    def spying(real):
+        def spy(text):
+            parsed.append(text)
+            return real(text)
 
-    monkeypatch.setattr(theme_save, "load_yaml", spy)
+        return spy
+
+    monkeypatch.setattr(theme_save, "load_yaml", spying(theme_save.load_yaml))
+    monkeypatch.setattr(theme_save, "top_level_keys", spying(theme_save.top_level_keys))
     assert theme_save.files_defining(str(tmp_path), "sunset") == ["mine.yaml"]
     assert len(parsed) == 1
 
@@ -155,3 +158,16 @@ async def test_scan_overflow_is_a_name_conflict(hass, setup, hass_ws_client, tmp
     client = await hass_ws_client(hass)
     msg = await _save(client)
     assert msg["error"]["code"] == "name_exists"
+
+
+def test_oversized_file_with_surrogate_escape_still_blocks_the_name(tmp_path):
+    body = "# " + "x" * 200000 + '\nVictim Theme:\n  primary-color: "\\ud800"\n'
+    (tmp_path / "big.yaml").write_text(body)
+    assert theme_save.files_defining(str(tmp_path), "Victim Theme") == ["big.yaml"]
+    assert theme_save.inspect_target(str(tmp_path), "big.yaml")[1] is None
+
+
+def test_file_over_the_node_budget_still_blocks_the_name(tmp_path):
+    lines = "".join(f"k{index}: 1\n" for index in range(80000))
+    (tmp_path / "many.yaml").write_text("Victim Theme:\n  a: b\n" + lines)
+    assert theme_save.files_defining(str(tmp_path), "Victim Theme") == ["many.yaml"]

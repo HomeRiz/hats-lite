@@ -102,7 +102,7 @@ def test_unexpected_loader_exception_is_not_valid_yaml(monkeypatch):
 def test_guarded_pure_loader_rejects_the_chain_quickly(monkeypatch):
     from custom_components.hats_lite import theme_loader
 
-    monkeypatch.setattr(theme_loader, "_shallow", lambda text: False)
+    monkeypatch.setattr(theme_loader, "LIBYAML", False)
     started = time.monotonic()
     with pytest.raises(ThemeTooLargeError):
         parse_themes(_chain(8000))
@@ -112,6 +112,6 @@ def test_guarded_pure_loader_rejects_the_chain_quickly(monkeypatch):
 def test_guarded_pure_loader_loads_merge_keys(monkeypatch):
     from custom_components.hats_lite import theme_loader
 
-    monkeypatch.setattr(theme_loader, "_shallow", lambda text: False)
+    monkeypatch.setattr(theme_loader, "LIBYAML", False)
     doc = "base: &b\n  primary-color: red\nT:\n  <<: *b\n  accent-color: blue\n"
     assert parse_themes(doc)["T"]["vars"] == {"primary-color": "red", "accent-color": "blue"}

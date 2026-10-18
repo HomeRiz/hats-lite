@@ -75,7 +75,9 @@ async def load_catalog(hacs_loader, public_loader):
     except Exception:
         records = None
     if isinstance(records, list):
-        return normalize_hacs_entries(records), "hacs"
+        entries = normalize_hacs_entries(records)
+        if entries:
+            return entries, "hacs"
     try:
         data = await public_loader()
     except Exception as err:

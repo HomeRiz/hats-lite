@@ -11,7 +11,7 @@ from custom_components.hats_lite.theme_cache import THEME_CACHE
 from custom_components.hats_lite.theme_fetch import ThemeFetchError, fetch_theme_yaml
 
 RAW = "https://raw.githubusercontent.com/a/b/abc1234/themes/x.yaml"
-CATALOG = ([{"full_name": "A/B", "description": "", "stars": 1, "installed": False, "last_commit": None, "hacs_id": None}], "public")
+CATALOG = ([{"full_name": "A/B", "description": "", "stars": 1, "installed": False, "last_commit": "abc1234", "hacs_id": None}], "public")
 TRANSIENT = {"rate_limited", "network", "timeout", "fetch_failed", "catalog_unavailable"}
 
 

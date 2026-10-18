@@ -76,6 +76,19 @@ def _strip_trailing(value):
     return value
 
 
+def _css_block(key):
+    key_lower = (key or "").lower()
+    return key_lower.startswith("card-mod-") or key_lower.startswith("uix-")
+
+
+def _encodable(value):
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return "\x00" not in value
+
+
 def sanitize_value(value, key=None):
     if isinstance(value, bool):
         return None
@@ -87,10 +100,9 @@ def sanitize_value(value, key=None):
         except ValueError:
             return None
 
-    if not isinstance(value, str) or len(value) > MAX_VALUE:
+    if not isinstance(value, str) or len(value) > MAX_VALUE or not _encodable(value):
         return None
-    key_lower = (key or "").lower()
-    css_block = key_lower.startswith("card-mod-") or key_lower.startswith("uix-")
+    css_block = _css_block(key)
     value = _strip_important(value) if css_block else _strip_trailing(value)
     if not value:
         return None
@@ -118,14 +130,23 @@ def sanitize_value(value, key=None):
     return value
 
 
-def _clean(block):
+def _sanitize_shared(value, key, memo):
+    if type(value) is not str:
+        return sanitize_value(value, key)
+    slot = (value, _css_block(key))
+    if slot not in memo:
+        memo[slot] = sanitize_value(value, key)
+    return memo[slot]
+
+
+def _clean(block, memo):
     out = {}
     for key, value in block.items():
         if not isinstance(key, str) or not KEY.fullmatch(key):
             continue
         if key.casefold() in FORBIDDEN_NAMES:
             continue
-        clean = sanitize_value(value, key)
+        clean = _sanitize_shared(value, key, memo)
         if clean is not None:
             out[key] = clean
     return out
@@ -170,6 +191,7 @@ def parse_themes(text):
     if not isinstance(doc, dict):
         raise ThemeError("Theme file is not a mapping of themes")
     _check_budget(doc)
+    memo = {}
     themes = {}
     for name, body in doc.items():
         if not isinstance(name, str):
@@ -180,9 +202,9 @@ def parse_themes(text):
             continue
         modes_raw = body.get("modes")
         flat = {k: v for k, v in body.items() if k != "modes"}
-        entry = {"vars": _clean(flat)}
+        entry = {"vars": _clean(flat, memo)}
         if isinstance(modes_raw, dict):
-            modes = {m: _clean(modes_raw[m]) for m in ("dark", "light") if isinstance(modes_raw.get(m), dict)}
+            modes = {m: _clean(modes_raw[m], memo) for m in ("dark", "light") if isinstance(modes_raw.get(m), dict)}
             if modes:
                 entry["modes"] = modes
         if entry["vars"] or entry.get("modes"):

@@ -2,7 +2,7 @@ import os
 import re
 import stat
 
-from .theme_loader import load_yaml
+from .theme_loader import NOT_VALID_YAML, ThemeError, load_yaml, top_level_keys
 from .theme_sanitizer import ThemeError, extract_urls, sanitize_value
 
 RESERVED_NAME = "default"
@@ -59,20 +59,32 @@ def _read_bounded(path):
     return None if len(data) > MAX_SCAN_BYTES else data
 
 
+def _unreadable(err):
+    return None if isinstance(err, ThemeError) and str(err) != NOT_VALID_YAML else []
+
+
 def _names_in(data):
     try:
         doc = load_yaml(data.decode("utf-8"))
-    except Exception:
-        return []
+    except Exception as err:
+        return _unreadable(err)
     return [key for key in doc if isinstance(key, str)] if isinstance(doc, dict) else []
+
+
+def _scan_names(data):
+    try:
+        keys = top_level_keys(data.decode("utf-8"))
+    except Exception as err:
+        return _unreadable(err)
+    return _names_in(data) if keys is None else keys
 
 
 def _defined_names(path):
     try:
         data = _read_bounded(path)
     except OSError:
-        return []
-    return [] if data is None else _names_in(data)
+        return None
+    return None if data is None else _names_in(data)
 
 
 def _may_define(data, wanted):
@@ -109,7 +121,8 @@ def files_defining(directory, name):
             continue
         if data is None or not _may_define(data, wanted):
             continue
-        if any(key.casefold() == wanted for key in _names_in(data)):
+        names = _scan_names(data)
+        if names is None or any(key.casefold() == wanted for key in names):
             found.append(os.path.relpath(path, directory))
     return found
 
@@ -119,7 +132,7 @@ def inspect_target(directory, file_name):
     if not os.path.lexists(path):
         return False, []
     if not _regular(os.path.realpath(directory), path):
-        return True, []
+        return True, None
     return True, _defined_names(path)
 
 

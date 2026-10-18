@@ -272,3 +272,14 @@ def test_summary_shape_and_caps():
     assert len(entry["vars"]) == 300
     assert "long" not in entry["vars"]
     assert entry["modes"] == {"dark": {"a": "1"}, "light": {"b": "2"}}
+
+
+async def test_unencodable_result_is_cached_as_invalid_theme():
+    cache = ThemeCache(Clock())
+    calls = []
+    with pytest.raises(ThemeLoadError) as caught:
+        await cache.load(KEY, producer(calls, {"T": {"vars": {"a": "\ud800"}}}))
+    assert caught.value.code == "invalid_theme"
+    with pytest.raises(ThemeLoadError):
+        await cache.load(KEY, producer(calls))
+    assert len(calls) == 1
