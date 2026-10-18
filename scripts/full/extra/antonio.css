@@ -1,0 +1,7 @@
+@font-face {
+  font-family: 'Antonio';
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: block;
+  src: url(/extra/antonio-latin.woff2) format('woff2');
+}

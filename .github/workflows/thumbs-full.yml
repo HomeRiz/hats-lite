@@ -1,0 +1,116 @@
+name: Thumbnails full
+
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      hats_sha:
+        description: Full commit SHA of the HATS repository, empty to use scripts/full/hats_pin.txt
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: thumbs-full
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    env:
+      ENABLED: ${{ vars.THUMBS_FULL_ENABLED == 'true' }}
+    steps:
+      - id: check
+        run: echo "enabled=$ENABLED" >> "$GITHUB_OUTPUT"
+
+  render:
+    needs: gate
+    if: needs.gate.outputs.enabled == 'true'
+    environment: thumbs-full
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out hats-lite with actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - id: pin
+        shell: bash
+        env:
+          INPUT_SHA: ${{ inputs.hats_sha }}
+        run: |
+          sha="$INPUT_SHA"
+          if [[ -z "$sha" ]]; then
+            sha="$(tr -d '[:space:]' < scripts/full/hats_pin.txt)"
+          fi
+          if [[ "$sha" == *$'\n'* || "$sha" == *$'\r'* || ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "the HATS pin must be one full 40 character lowercase commit SHA" >&2
+            exit 1
+          fi
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+      - name: Check out HATS with actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: HomeRiz/hats
+          ref: ${{ steps.pin.outputs.sha }}
+          ssh-key: ${{ secrets.HATS_DEPLOY_KEY }}
+          path: hats
+          persist-credentials: false
+      - name: Set up Python with actions/setup-python v7.0.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.13"
+      - name: Set up Node with actions/setup-node v7.1.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
+      - run: pip install -r requirements-dev.txt
+      - run: python -c "import jinja2; v = tuple(int(p) for p in jinja2.__version__.split('.')[:3]); assert v >= (3, 1, 6), jinja2.__version__"
+      - run: npm ci --ignore-scripts
+      - run: npm ci --ignore-scripts
+        working-directory: hats
+      - name: Cache the HATS vendor folder with actions/cache v5.1.0
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: hats/vendor
+          key: hats-vendor-${{ runner.os }}-${{ steps.pin.outputs.sha }}-${{ hashFiles('hats/scripts/fetch-mock-frontend.sh', 'hats/scripts/fetch-mock-mods.sh') }}
+      - run: bash scripts/fetch-mock-frontend.sh
+        working-directory: hats
+      - run: bash scripts/fetch-mock-mods.sh
+        working-directory: hats
+      - run: npm run build:mock-frontend-bootstrap
+        working-directory: hats
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-roboto fonts-dejavu-core && fc-cache -f
+      - id: chrome
+        run: echo "path=$(npx --no-install @puppeteer/browsers install chrome@150 --path "$RUNNER_TEMP/chrome" --format '{{path}}')" >> "$GITHUB_OUTPUT"
+      - run: python scripts/thumbs_collect.py "$RUNNER_TEMP/full-data"
+      - name: Allow unprivileged user namespaces for the template worker
+        run: |
+          if sysctl -n kernel.apparmor_restrict_unprivileged_userns > /dev/null 2>&1; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || echo "could not change kernel.apparmor_restrict_unprivileged_userns"
+          fi
+          if unshare -rn true; then
+            echo "unprivileged network namespaces are available"
+          else
+            echo "unprivileged network namespaces are not available, the render step will fail closed"
+          fi
+      - run: node scripts/full/render.mjs "$RUNNER_TEMP/full-data/data.json" "$RUNNER_TEMP/full-out"
+        env:
+          HATS_DIR: ${{ github.workspace }}/hats
+          CHROME_PATH: ${{ steps.chrome.outputs.path }}
+          PYTHON: python
+          HATS_REQUIRE_NETNS: "1"
+      - name: Upload the renders with actions/upload-artifact v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: thumbs-full
+          path: ${{ runner.temp }}/full-out
+          if-no-files-found: error
+          retention-days: 7

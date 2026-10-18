@@ -1,4 +1,4 @@
-const HOSTS = new Set(["raw.githubusercontent.com", "cdn.jsdelivr.net", "github.com"]);
+export const HOSTS = new Set(["raw.githubusercontent.com", "cdn.jsdelivr.net", "github.com"]);
 const MAX_DATA_URL = 2048;
 
 export function isAllowedRequest(url) {
