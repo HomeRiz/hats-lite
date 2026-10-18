@@ -1,0 +1,34 @@
+[
+  {
+    "full_name": "th3jesta/ha-lcars",
+    "commit": "0c4ce18",
+    "license": "MIT",
+    "dir": "th3jesta-ha-lcars",
+    "names": [
+      "LCARS 25C",
+      "LCARS 25C (Blue Alert)",
+      "LCARS 25C (Red Alert)",
+      "LCARS 25C (Yellow Alert)",
+      "LCARS Breen",
+      "LCARS Cardassia",
+      "LCARS Classic",
+      "LCARS Default",
+      "LCARS Kronos",
+      "LCARS Picard [LCARdS Blue Accent]",
+      "LCARS Picard [LCARdS Red Accent]",
+      "LCARS Lower Decks I",
+      "LCARS Lower Decks II",
+      "LCARS Modern",
+      "LCARS Navigation",
+      "LCARS Nemesis Blue",
+      "LCARS Picard I",
+      "LCARS Picard II",
+      "LCARS Red Alert",
+      "LCARS Romulus",
+      "LCARS TNG",
+      "LCARS TNGbuttons",
+      "LCARS Transporter",
+      "LCARS Zeldaar"
+    ]
+  }
+]
