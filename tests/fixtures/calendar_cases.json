@@ -1,0 +1,1145 @@
+[
+  {
+    "name": "dst_spring_forward_us",
+    "user": "u1",
+    "tz": "America/New_York",
+    "month": "2026-03",
+    "state": {
+      "opt_out": {},
+      "overrides": [
+        {
+          "id": "o1",
+          "user_id": "u1",
+          "theme": "Sunset",
+          "source": "manual",
+          "assigned_by": "admin",
+          "starts": 1772946000.0,
+          "ends": 1773028800.0
+        }
+      ],
+      "birthdays": {},
+      "holidays": [
+        {
+          "id": "h1",
+          "name": "Spring break",
+          "month_start": 3,
+          "day_start": 7,
+          "month_end": 3,
+          "day_end": 9,
+          "theme": "Midnight",
+          "enabled": true
+        }
+      ]
+    },
+    "opt_out": false,
+    "expected": {
+      "2026-03-07": {
+        "winner": {
+          "source": "holiday",
+          "theme": "Midnight"
+        },
+        "items": [
+          {
+            "kind": "holiday",
+            "theme": "Midnight",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-03-08": {
+        "winner": {
+          "source": "manual",
+          "theme": "Sunset"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Sunset",
+            "wins": true,
+            "partial": false
+          },
+          {
+            "kind": "holiday",
+            "theme": "Midnight",
+            "wins": false,
+            "partial": false
+          }
+        ],
+        "conflict": true
+      },
+      "2026-03-09": {
+        "winner": {
+          "source": "holiday",
+          "theme": "Midnight"
+        },
+        "items": [
+          {
+            "kind": "holiday",
+            "theme": "Midnight",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      }
+    }
+  },
+  {
+    "name": "dst_fall_back_us",
+    "user": "u1",
+    "tz": "America/New_York",
+    "month": "2026-11",
+    "state": {
+      "opt_out": {},
+      "overrides": [
+        {
+          "id": "o1",
+          "user_id": "u1",
+          "theme": "Sunset",
+          "source": "manual",
+          "assigned_by": "admin",
+          "starts": 1793505600.0,
+          "ends": 1793595600.0
+        }
+      ],
+      "birthdays": {},
+      "holidays": [
+        {
+          "id": "h1",
+          "name": "Fall",
+          "month_start": 10,
+          "day_start": 31,
+          "month_end": 11,
+          "day_end": 1,
+          "theme": "Midnight",
+          "enabled": true
+        }
+      ]
+    },
+    "opt_out": false,
+    "expected": {
+      "2026-11-01": {
+        "winner": {
+          "source": "manual",
+          "theme": "Sunset"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Sunset",
+            "wins": true,
+            "partial": false
+          },
+          {
+            "kind": "holiday",
+            "theme": "Midnight",
+            "wins": false,
+            "partial": false
+          }
+        ],
+        "conflict": true
+      }
+    }
+  },
+  {
+    "name": "leap_birthday_common_year",
+    "user": "u1",
+    "tz": "Europe/Bucharest",
+    "month": "2027-02",
+    "state": {
+      "opt_out": {},
+      "overrides": [],
+      "birthdays": {
+        "u1": {
+          "month": 2,
+          "day": 29,
+          "theme": "Party"
+        }
+      },
+      "holidays": []
+    },
+    "opt_out": false,
+    "expected": {
+      "2027-02-28": {
+        "winner": {
+          "source": "birthday",
+          "theme": "Party"
+        },
+        "items": [
+          {
+            "kind": "birthday",
+            "theme": "Party",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      }
+    }
+  },
+  {
+    "name": "leap_birthday_leap_year",
+    "user": "u1",
+    "tz": "Europe/Bucharest",
+    "month": "2028-02",
+    "state": {
+      "opt_out": {},
+      "overrides": [],
+      "birthdays": {
+        "u1": {
+          "month": 2,
+          "day": 29,
+          "theme": "Party"
+        }
+      },
+      "holidays": []
+    },
+    "opt_out": false,
+    "expected": {
+      "2028-02-29": {
+        "winner": {
+          "source": "birthday",
+          "theme": "Party"
+        },
+        "items": [
+          {
+            "kind": "birthday",
+            "theme": "Party",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      }
+    }
+  },
+  {
+    "name": "override_ends_at_midnight",
+    "user": "u1",
+    "tz": "Europe/Bucharest",
+    "month": "2026-06",
+    "state": {
+      "opt_out": {},
+      "overrides": [
+        {
+          "id": "o1",
+          "user_id": "u1",
+          "theme": "Ocean",
+          "source": "manual",
+          "assigned_by": "admin",
+          "starts": 1781103600.0,
+          "ends": 1781211600.0
+        }
+      ],
+      "birthdays": {},
+      "holidays": []
+    },
+    "opt_out": false,
+    "expected": {
+      "2026-06-10": {
+        "winner": null,
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Ocean",
+            "wins": false,
+            "partial": true,
+            "active_from": "18:00",
+            "active_until": "24:00"
+          }
+        ],
+        "conflict": false
+      },
+      "2026-06-11": {
+        "winner": {
+          "source": "manual",
+          "theme": "Ocean"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Ocean",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      }
+    }
+  },
+  {
+    "name": "holiday_wraps_year",
+    "user": "u1",
+    "tz": "Europe/Bucharest",
+    "month": "2026-12",
+    "state": {
+      "opt_out": {},
+      "overrides": [],
+      "birthdays": {},
+      "holidays": [
+        {
+          "id": "h1",
+          "name": "Winter",
+          "month_start": 12,
+          "day_start": 30,
+          "month_end": 1,
+          "day_end": 2,
+          "theme": "Snow",
+          "enabled": true
+        }
+      ]
+    },
+    "opt_out": false,
+    "expected": {
+      "2026-12-30": {
+        "winner": {
+          "source": "holiday",
+          "theme": "Snow"
+        },
+        "items": [
+          {
+            "kind": "holiday",
+            "theme": "Snow",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-12-31": {
+        "winner": {
+          "source": "holiday",
+          "theme": "Snow"
+        },
+        "items": [
+          {
+            "kind": "holiday",
+            "theme": "Snow",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      }
+    }
+  },
+  {
+    "name": "precedence_and_conflict",
+    "user": "u1",
+    "tz": "Europe/Bucharest",
+    "month": "2026-05",
+    "state": {
+      "opt_out": {},
+      "overrides": [
+        {
+          "id": "o1",
+          "user_id": "u1",
+          "theme": "Ocean",
+          "source": "manual",
+          "assigned_by": "admin",
+          "starts": 1777842000.0,
+          "ends": 1778014800.0
+        },
+        {
+          "id": "o2",
+          "user_id": "u1",
+          "theme": "Forest",
+          "source": "schedule",
+          "assigned_by": "admin",
+          "starts": 1777971600.0,
+          "ends": null
+        }
+      ],
+      "birthdays": {
+        "u1": {
+          "month": 5,
+          "day": 3,
+          "theme": "Party"
+        }
+      },
+      "holidays": [
+        {
+          "id": "h1",
+          "name": "Labour",
+          "month_start": 5,
+          "day_start": 1,
+          "month_end": 5,
+          "day_end": 3,
+          "theme": "Red",
+          "enabled": true
+        }
+      ]
+    },
+    "opt_out": false,
+    "expected": {
+      "2026-05-01": {
+        "winner": {
+          "source": "holiday",
+          "theme": "Red"
+        },
+        "items": [
+          {
+            "kind": "holiday",
+            "theme": "Red",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-02": {
+        "winner": {
+          "source": "holiday",
+          "theme": "Red"
+        },
+        "items": [
+          {
+            "kind": "holiday",
+            "theme": "Red",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-03": {
+        "winner": {
+          "source": "birthday",
+          "theme": "Party"
+        },
+        "items": [
+          {
+            "kind": "birthday",
+            "theme": "Party",
+            "wins": true,
+            "partial": false
+          },
+          {
+            "kind": "holiday",
+            "theme": "Red",
+            "wins": false,
+            "partial": false
+          }
+        ],
+        "conflict": true
+      },
+      "2026-05-04": {
+        "winner": {
+          "source": "manual",
+          "theme": "Ocean"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Ocean",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-05": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Ocean",
+            "wins": false,
+            "partial": false
+          },
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": true
+      },
+      "2026-05-06": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-07": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-08": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-09": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-10": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-11": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-12": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-13": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-14": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-15": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-16": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-17": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-18": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-19": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-20": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-21": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-22": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-23": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-24": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-25": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-26": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-27": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-28": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-29": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-30": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      },
+      "2026-05-31": {
+        "winner": {
+          "source": "schedule",
+          "theme": "Forest"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Forest",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      }
+    }
+  },
+  {
+    "name": "same_theme_no_conflict",
+    "user": "u1",
+    "tz": "Europe/Bucharest",
+    "month": "2026-07",
+    "state": {
+      "opt_out": {},
+      "overrides": [],
+      "birthdays": {
+        "u1": {
+          "month": 7,
+          "day": 4,
+          "theme": "Party"
+        }
+      },
+      "holidays": [
+        {
+          "id": "h1",
+          "name": "Fest",
+          "month_start": 7,
+          "day_start": 4,
+          "month_end": 7,
+          "day_end": 4,
+          "theme": "Party",
+          "enabled": true
+        }
+      ]
+    },
+    "opt_out": false,
+    "expected": {
+      "2026-07-04": {
+        "winner": {
+          "source": "birthday",
+          "theme": "Party"
+        },
+        "items": [
+          {
+            "kind": "birthday",
+            "theme": "Party",
+            "wins": true,
+            "partial": false
+          },
+          {
+            "kind": "holiday",
+            "theme": "Party",
+            "wins": false,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      }
+    }
+  },
+  {
+    "name": "opted_out",
+    "user": "u1",
+    "tz": "Europe/Bucharest",
+    "month": "2026-08",
+    "state": {
+      "opt_out": {
+        "u1": true
+      },
+      "overrides": [],
+      "birthdays": {
+        "u1": {
+          "month": 8,
+          "day": 8,
+          "theme": "Party"
+        }
+      },
+      "holidays": []
+    },
+    "opt_out": true,
+    "expected": {
+      "2026-08-08": {
+        "winner": null,
+        "items": [
+          {
+            "kind": "birthday",
+            "theme": "Party",
+            "wins": false,
+            "partial": false
+          }
+        ],
+        "conflict": false
+      }
+    }
+  },
+  {
+    "name": "evening_override_loses_to_birthday",
+    "user": "u1",
+    "tz": "Europe/Bucharest",
+    "month": "2026-06",
+    "state": {
+      "opt_out": {},
+      "overrides": [
+        {
+          "id": "o1",
+          "user_id": "u1",
+          "theme": "Sunset",
+          "source": "manual",
+          "assigned_by": "admin",
+          "starts": 1781118000.0,
+          "ends": 1781121600.0
+        }
+      ],
+      "birthdays": {
+        "u1": {
+          "month": 6,
+          "day": 10,
+          "theme": "Cake"
+        }
+      },
+      "holidays": []
+    },
+    "opt_out": false,
+    "expected": {
+      "2026-06-10": {
+        "winner": {
+          "source": "birthday",
+          "theme": "Cake"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Sunset",
+            "wins": false,
+            "partial": true,
+            "active_from": "22:00",
+            "active_until": "23:00"
+          },
+          {
+            "kind": "birthday",
+            "theme": "Cake",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": true
+      }
+    }
+  },
+  {
+    "name": "override_ending_at_eight",
+    "user": "u1",
+    "tz": "Europe/Bucharest",
+    "month": "2026-06",
+    "state": {
+      "opt_out": {},
+      "overrides": [
+        {
+          "id": "o1",
+          "user_id": "u1",
+          "theme": "Sunset",
+          "source": "manual",
+          "assigned_by": "admin",
+          "starts": 1781024400.0,
+          "ends": 1781067600.0
+        }
+      ],
+      "birthdays": {},
+      "holidays": []
+    },
+    "opt_out": false,
+    "expected": {
+      "2026-06-09": {
+        "winner": null,
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Sunset",
+            "wins": false,
+            "partial": true,
+            "active_from": "20:00",
+            "active_until": "24:00"
+          }
+        ],
+        "conflict": false
+      },
+      "2026-06-10": {
+        "winner": null,
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Sunset",
+            "wins": false,
+            "partial": true,
+            "active_from": "00:00",
+            "active_until": "08:00"
+          }
+        ],
+        "conflict": false
+      }
+    }
+  },
+  {
+    "name": "all_day_override_then_late_override",
+    "user": "u1",
+    "tz": "Europe/Bucharest",
+    "month": "2026-06",
+    "state": {
+      "opt_out": {},
+      "overrides": [
+        {
+          "id": "a",
+          "user_id": "u1",
+          "theme": "Sunset",
+          "source": "manual",
+          "assigned_by": "admin",
+          "starts": 1781017200.0,
+          "ends": 1781146800.0
+        },
+        {
+          "id": "b",
+          "user_id": "u1",
+          "theme": "Midnight",
+          "source": "manual",
+          "assigned_by": "admin",
+          "starts": 1781123400.0,
+          "ends": 1781190000.0
+        }
+      ],
+      "birthdays": {},
+      "holidays": []
+    },
+    "opt_out": false,
+    "expected": {
+      "2026-06-09": {
+        "winner": null,
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Sunset",
+            "wins": false,
+            "partial": true,
+            "active_from": "18:00",
+            "active_until": "24:00"
+          }
+        ],
+        "conflict": false
+      },
+      "2026-06-10": {
+        "winner": {
+          "source": "manual",
+          "theme": "Sunset"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Sunset",
+            "wins": true,
+            "partial": false
+          },
+          {
+            "kind": "override",
+            "theme": "Midnight",
+            "wins": false,
+            "partial": true,
+            "active_from": "23:30",
+            "active_until": "24:00"
+          }
+        ],
+        "conflict": true
+      },
+      "2026-06-11": {
+        "winner": {
+          "source": "manual",
+          "theme": "Midnight"
+        },
+        "items": [
+          {
+            "kind": "override",
+            "theme": "Sunset",
+            "wins": false,
+            "partial": true,
+            "active_from": "00:00",
+            "active_until": "06:00"
+          },
+          {
+            "kind": "override",
+            "theme": "Midnight",
+            "wins": true,
+            "partial": false
+          }
+        ],
+        "conflict": true
+      }
+    }
+  }
+]
