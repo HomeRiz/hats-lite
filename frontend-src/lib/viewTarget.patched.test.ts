@@ -34,7 +34,8 @@ describe("builtin methods replaced after load", () => {
     const mapped = view.map((v) => v.a);
     const filtered = view.filter((v) => v.a > 1);
     const found = view.find((v) => v.a === 2);
-    expect(seen).toEqual([]);
+    restore.splice(0).reverse().forEach((fn) => fn());
+    expect(seen.length).toBe(0);
     expect(mapped).toEqual([1, 2]);
     expect(filtered).toHaveLength(1);
     expect(found?.a).toBe(2);
@@ -51,7 +52,8 @@ describe("builtin methods replaced after load", () => {
     );
     const view = readOnlyView([raw]);
     view.map((v) => v);
-    expect(leaked).toEqual([]);
+    restore.splice(0).reverse().forEach((fn) => fn());
+    expect(leaked.length).toBe(0);
     expect(leaked.includes(raw)).toBe(false);
   });
 

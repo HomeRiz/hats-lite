@@ -98,10 +98,10 @@ describe("hats-lite-panel shell", () => {
     panel?.remove();
   });
 
-  it("renders three tabs with Gallery selected first", async () => {
+  it("renders four tabs with Gallery selected first", async () => {
     await mount();
     const tabs = root().querySelectorAll('[role="tab"]');
-    expect(tabs.length).toBe(3);
+    expect(tabs.length).toBe(4);
     expect(tab("browse").textContent?.trim()).toBe(strings.shell.tabs.browse);
     expect(tab("browse").getAttribute("aria-selected")).toBe("true");
     expect(tab("preview").getAttribute("aria-selected")).toBe("false");
@@ -226,15 +226,21 @@ describe("hats-lite-panel shell", () => {
       new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, composed: true }),
     );
     await panel.updateComplete;
+    expect(tab("people").getAttribute("aria-selected")).toBe("true");
+
+    tab("people").dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, composed: true }),
+    );
+    await panel.updateComplete;
     expect(tab("browse").getAttribute("aria-selected")).toBe("true");
 
     tab("browse").dispatchEvent(
       new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, composed: true }),
     );
     await panel.updateComplete;
-    expect(tab("designer").getAttribute("aria-selected")).toBe("true");
+    expect(tab("people").getAttribute("aria-selected")).toBe("true");
 
-    tab("designer").dispatchEvent(
+    tab("people").dispatchEvent(
       new KeyboardEvent("keydown", { key: "Home", bubbles: true, composed: true }),
     );
     await panel.updateComplete;
@@ -244,7 +250,31 @@ describe("hats-lite-panel shell", () => {
       new KeyboardEvent("keydown", { key: "End", bubbles: true, composed: true }),
     );
     await panel.updateComplete;
-    expect(tab("designer").getAttribute("aria-selected")).toBe("true");
+    expect(tab("people").getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("hides the People tab when the server does not know the command", async () => {
+    const hass = makeHass();
+    (hass.connection.sendMessagePromise as ReturnType<typeof vi.fn>).mockImplementation(
+      async (msg: { type: string }) => {
+        if (msg.type === "hats_lite/people") throw { code: "unknown_command" };
+        return {};
+      },
+    );
+    await mount(hass);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await panel.updateComplete;
+    expect(root().querySelector("#tab-people")).toBeNull();
+    expect(root().querySelectorAll('[role="tab"]').length).toBe(3);
+  });
+
+  it("renders the People tab lazily with hass", async () => {
+    const hass = makeHass();
+    await mount(hass);
+    expect(root().querySelector("hats-lite-people")).toBeNull();
+    tab("people").click();
+    await panel.updateComplete;
+    expect((root().querySelector("hats-lite-people") as unknown as { hass: unknown }).hass).toBe(hass);
   });
 
   it("shows the narrow menu button only when narrow and fires hass-toggle-menu", async () => {
@@ -331,10 +361,13 @@ describe("hats-lite-panel shell", () => {
     expect(event.bubbles).toBe(true);
     expect(event.composed).toBe(true);
     expect(event.detail).toEqual({ theme: "Mine", dark: true });
+    expect(event.detail.primaryColor).toBeUndefined();
+    expect("primaryColor" in event.detail).toBe(true);
+    expect("accentColor" in event.detail).toBe(true);
     expect(tab("preview").getAttribute("aria-selected")).toBe("true");
   });
 
-  it("omits dark from settheme when the hass does not report a dark mode", async () => {
+  it("clears dark in settheme when the hass does not report a dark mode", async () => {
     const hass = makeHass(["ocean"], true);
     hass.themes!.darkMode = undefined;
     await mount(hass);
@@ -346,6 +379,7 @@ describe("hats-lite-panel shell", () => {
     await panel.updateComplete;
     const event = onSettheme.mock.calls[0][0] as CustomEvent;
     expect(event.detail).toEqual({ theme: "Mine" });
-    expect("dark" in event.detail).toBe(false);
+    expect("dark" in event.detail).toBe(true);
+    expect(event.detail.dark).toBeUndefined();
   });
 });

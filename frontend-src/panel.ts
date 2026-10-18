@@ -3,7 +3,9 @@ import { styleMap } from "lit/directives/style-map.js";
 import "./panel/browse";
 import "./panel/preview";
 import "./panel/designerTab";
-import { resolveVars } from "./lib/previewScope";
+import "./panel/people";
+import { modsSupported } from "./panel/mods";
+import { peopleSupported } from "./panel/peopleData";
 import type { HatsLiteBrowse } from "./panel/browse";
 import { BundleCache, loadFileTheme } from "./panel/browseBundles";
 import { KnownNames, sameList } from "./panel/browseNames";
@@ -17,18 +19,21 @@ import {
   type ThemeSavedDetail,
   type ThemeSelectedDetail,
 } from "./panel/contract";
-import { normalizeTheme, repoUrlFor, themesDiffer } from "./panel/previewData";
+import { restoreDetail } from "./pendingTrial";
+import { installedCandidate } from "./panel/scheduleCandidate";
+import { buildCandidate, installTarget, refreshInstalled, sameCandidate, uninstallTarget } from "./panel/candidate";
+import type { InstalledDetail } from "./panel/previewInstall";
+import type { NavDetail } from "./panel/previewNav";
+import { ThemeNavigator } from "./panel/previewNavigator";
+import { InkController } from "./panel/inkController";
 import { inUse } from "./panel/shellTheme";
 import { shellStyles } from "./panel/styles";
+import { MENU_ICON, renderFileThemes, tabIndexForKey } from "./panel/panelParts";
 import { strings } from "./panel/strings";
 
-type TabId = "browse" | "preview" | "designer";
+type TabId = "browse" | "preview" | "designer" | "people" | "mods";
 
-const TABS: readonly TabId[] = ["browse", "preview", "designer"];
-
-const MENU_ICON = html`<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
-  <path d="M3 6h18M3 12h18M3 18h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
-</svg>`;
+const TABS: readonly TabId[] = ["browse", "preview", "designer", "people", "mods"];
 
 export class HatsLitePanel extends LitElement {
   static properties = {
@@ -40,9 +45,12 @@ export class HatsLitePanel extends LitElement {
     entry: { state: true },
     fileThemes: { state: true },
     fileNames: { state: true },
+    fileStatus: { state: true },
     chosenName: { state: true },
     candidate: { state: true },
     previewMode: { state: true },
+    peopleOk: { state: true },
+    modsOk: { state: true },
   };
 
   static styles = shellStyles;
@@ -55,9 +63,14 @@ export class HatsLitePanel extends LitElement {
   entry: CatalogEntry | null = null;
   fileThemes: ThemeBundle = {};
   fileNames: string[] = [];
+  fileStatus: "" | "loading" | "error" = "";
   chosenName = "";
   candidate: PreviewCandidate | null = null;
   previewMode?: PreviewMode;
+  peopleOk = true;
+  modsOk = false;
+  private ink = new InkController(this);
+  private probed = false;
   private installedNames: string[] = [];
   private bundles = new BundleCache();
   private known = new KnownNames();
@@ -69,6 +82,10 @@ export class HatsLitePanel extends LitElement {
 
   private panelId(id: TabId): string {
     return `panel-${id}`;
+  }
+
+  private get tabs(): readonly TabId[] {
+    return TABS.filter((id) => (id === "people" ? this.peopleOk : id === "mods" ? this.modsOk : true));
   }
 
   private rendered = new Set<TabId>(["browse"]);
@@ -84,26 +101,11 @@ export class HatsLitePanel extends LitElement {
   }
 
   private onTabKey = (event: KeyboardEvent): void => {
-    const index = TABS.indexOf(this.tab);
-    let next: number;
-    switch (event.key) {
-      case "ArrowRight":
-        next = (index + 1) % TABS.length;
-        break;
-      case "ArrowLeft":
-        next = (index - 1 + TABS.length) % TABS.length;
-        break;
-      case "Home":
-        next = 0;
-        break;
-      case "End":
-        next = TABS.length - 1;
-        break;
-      default:
-        return;
-    }
+    const tabs = this.tabs;
+    const next = tabIndexForKey(event.key, tabs.indexOf(this.tab), tabs.length);
+    if (next === null) return;
     event.preventDefault();
-    const target = TABS[next];
+    const target = tabs[next];
     this.select(target);
     void this.focusTab(target);
   };
@@ -112,67 +114,115 @@ export class HatsLitePanel extends LitElement {
     this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
   };
 
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.navigator.clear();
+  }
+
   protected willUpdate(changed: PropertyValues): void {
     if (!changed.has("hass")) return;
+    if (this.hass && !this.probed) {
+      this.probed = true;
+      void modsSupported(this.hass).then((ok) => (this.modsOk = ok));
+      void peopleSupported(this.hass).then((ok) => {
+        this.peopleOk = ok;
+        if (!ok && this.tab === "people") this.tab = "browse";
+      });
+    }
     const names = Object.keys(this.hass?.themes?.themes ?? {});
     if (!sameList(names, this.installedNames)) this.installedNames = names;
     if (this.candidate) this.refreshCandidate();
   }
 
-  private buildCandidate(name: string): PreviewCandidate | null {
-    const entry = this.entry;
-    if (!entry || !Object.prototype.hasOwnProperty.call(this.fileThemes, name)) return null;
-    const theme = normalizeTheme(this.fileThemes[name] as unknown as Record<string, unknown>);
-    const mode: PreviewMode = this.hass?.themes?.darkMode ? "dark" : "light";
-    const installed = this.installedNames.includes(name);
-    const stored = this.hass?.themes?.themes;
-    const live = stored && Object.prototype.hasOwnProperty.call(stored, name) ? stored[name] : undefined;
-    const nameCollision = installed && !entry.installed && themesDiffer(live, theme);
-    return {
-      name,
-      vars: resolveVars(theme, mode),
-      entry: theme,
-      installed,
-      nameCollision,
-      repoUrl: repoUrlFor(entry.full_name),
-      canApply: installed && !nameCollision,
-    };
+  private build(name: string): PreviewCandidate | null {
+    return buildCandidate(this.entry, this.fileThemes, name, this.hass, this.installedNames);
   }
 
   private refreshCandidate(): void {
     const current = this.candidate;
-    const next = this.buildCandidate(this.chosenName);
-    if (!current || !next) return;
-    const same =
-      current.installed === next.installed &&
-      current.nameCollision === next.nameCollision &&
-      current.canApply === next.canApply &&
-      JSON.stringify(current.vars) === JSON.stringify(next.vars);
-    if (!same) this.candidate = next;
+    if (current && !this.entry) {
+      this.candidate = refreshInstalled(this.hass, current, this.previewMode);
+      this.chosenName = this.candidate ? this.chosenName : "";
+      return;
+    }
+    const next = this.build(this.chosenName);
+    if (current && next && !sameCandidate(current, next)) this.candidate = next;
   }
 
   private setCandidate(name: string): void {
-    const next = this.buildCandidate(name);
+    const next = this.build(name);
     if (!next) return;
-    this.chosenName = name;
-    this.candidate = next;
+    [this.chosenName, this.candidate] = [name, next];
   }
 
-  private onThemeSelected = (event: Event): void => {
-    const detail = (event as CustomEvent<ThemeSelectedDetail & { mode?: PreviewMode }>).detail;
+  private gallery(): HatsLiteBrowse | null {
+    return this.renderRoot.querySelector<HatsLiteBrowse>("hats-lite-browse");
+  }
+
+  private navigator = new ThemeNavigator({
+    open: (target) => {
+      const gallery = this.gallery();
+      if (!gallery) return Promise.reject(new Error("gallery missing"));
+      return gallery.openEntry(gallery.entries.find((e) => e.full_name === target.full_name) ?? target);
+    },
+    apply: (detail) => this.showBundle(detail),
+    onChange: () => this.requestUpdate(),
+  });
+
+  private showBundle(detail: ThemeSelectedDetail): void {
     const names = Object.keys(detail?.themes ?? {});
     if (names.length === 0) return;
-    const gallery = this.renderRoot.querySelector<HatsLiteBrowse>("hats-lite-browse");
-    this.previewMode = detail.mode ?? gallery?.mode;
     const first = detail.theme && names.includes(detail.theme) ? detail.theme : names[0];
     this.pickToken += 1;
+    this.fileStatus = "";
     this.entry = detail.entry;
     this.fileThemes = detail.themes;
     this.fileNames = [...new Set([...(detail.names ?? []), ...names])];
     this.bundles.set(detail.entry, first, { themes: detail.themes, names: this.fileNames, theme: first });
     this.setCandidate(first);
+  }
+
+  private onThemeSelected = (event: Event): void => {
+    const detail = (event as CustomEvent<ThemeSelectedDetail & { mode?: PreviewMode }>).detail;
+    if (Object.keys(detail?.themes ?? {}).length === 0) return;
+    const gallery = this.gallery();
+    this.previewMode = detail.mode ?? gallery?.mode;
+    this.navigator.start(gallery?.visibleEntries() ?? [], detail.entry);
+    this.showBundle(detail);
     this.select("preview");
     void this.focusTab("preview");
+  };
+
+  private onPreviewTheme = (event: Event): void => {
+    const detail = (event as CustomEvent<{ theme?: string; dark?: boolean }>).detail;
+    const picked = installedCandidate(this.hass, detail?.theme, detail?.dark);
+    if (!picked) return;
+    this.navigator.clear();
+    this.pickToken += 1;
+    this.fileStatus = "";
+    this.entry = null;
+    this.fileThemes = {};
+    this.fileNames = [];
+    this.chosenName = picked.candidate.name;
+    this.candidate = picked.candidate;
+    this.previewMode = picked.mode;
+    this.select("preview");
+    void this.focusTab("preview");
+  };
+
+  private onNav = (event: Event): void => {
+    const direction = (event as CustomEvent<NavDetail>).detail?.direction;
+    if (direction === 1 || direction === -1) this.navigator.move(direction);
+  };
+
+  private onInstalled = async (event: Event): Promise<void> => {
+    const fullName = (event as CustomEvent<InstalledDetail>).detail?.fullName;
+    const fresh = await this.gallery()?.refreshCatalog();
+    const match = fresh?.find((e) => e.full_name === fullName);
+    if (match && this.entry?.full_name === fullName) {
+      this.entry = match;
+      this.refreshCandidate();
+    }
   };
 
   private onPreviewMode = (event: Event): void => {
@@ -184,6 +234,7 @@ export class HatsLitePanel extends LitElement {
     const name = (event.target as HTMLSelectElement).value;
     if (Object.prototype.hasOwnProperty.call(this.fileThemes, name)) {
       this.pickToken += 1;
+      this.fileStatus = "";
       this.setCandidate(name);
       return;
     }
@@ -194,13 +245,15 @@ export class HatsLitePanel extends LitElement {
     const entry = this.entry;
     if (!entry) return;
     const token = ++this.pickToken;
+    this.fileStatus = "loading";
     try {
       const opened = await loadFileTheme(this.hass, this.known, this.bundles, entry, name);
       if (token !== this.pickToken || entry !== this.entry) return;
+      this.fileStatus = "";
       this.fileThemes = opened.themes;
       this.setCandidate(name);
     } catch {
-      if (token === this.pickToken) this.requestUpdate();
+      if (token === this.pickToken) this.fileStatus = "error";
     }
   }
 
@@ -212,7 +265,7 @@ export class HatsLitePanel extends LitElement {
       new CustomEvent("settheme", {
         bubbles: true,
         composed: true,
-        detail: darkMode === undefined ? { theme: detail.name } : { theme: detail.name, dark: darkMode },
+        detail: restoreDetail(darkMode === undefined ? { theme: detail.name } : { theme: detail.name, dark: darkMode }),
       }),
     );
     this.select("preview");
@@ -221,7 +274,7 @@ export class HatsLitePanel extends LitElement {
   private renderTabs() {
     return html`
       <nav class="tabs seg" role="tablist" aria-label=${strings.shell.tabList} @keydown=${this.onTabKey}>
-        ${TABS.map((id) => {
+        ${this.tabs.map((id) => {
           const selected = this.tab === id;
           return html`
             <button
@@ -254,21 +307,6 @@ export class HatsLitePanel extends LitElement {
     `;
   }
 
-  private renderFileThemes() {
-    const names = this.fileNames;
-    if (names.length < 2) return nothing;
-    return html`
-      <label class="file-theme">
-        ${strings.shell.fileTheme}
-        <select @change=${this.onFileThemeChange}>
-          ${names.map(
-            (name) => html`<option value=${name} ?selected=${name === this.chosenName}>${name}</option>`,
-          )}
-        </select>
-      </label>
-    `;
-  }
-
   protected render() {
     return html`
       <div class="page">
@@ -286,6 +324,7 @@ export class HatsLitePanel extends LitElement {
         class="content"
         @hats-lite-theme-selected=${this.onThemeSelected}
         @hats-lite-theme-saved=${this.onThemeSaved}
+        @hats-lite-preview-theme=${this.onPreviewTheme}
       >
         <section
           class="panel"
@@ -311,12 +350,17 @@ export class HatsLitePanel extends LitElement {
           ?hidden=${this.tab !== "preview"}
         >
           ${this.rendered.has("preview")
-            ? html`${this.renderFileThemes()}
+            ? html`${renderFileThemes(this.fileNames, this.chosenName, this.fileStatus, this.onFileThemeChange)}
               <hats-lite-preview
                 .hass=${this.hass}
                 .candidate=${this.candidate}
                 .mode=${this.previewMode}
+                .nav=${this.navigator.model()}
+                .install=${installTarget(this.entry, this.candidate)}
+                .uninstall=${uninstallTarget(this.entry, this.candidate)}
                 @hats-lite-mode-change=${this.onPreviewMode}
+                @hats-lite-preview-nav=${this.onNav}
+                @hats-lite-theme-installed=${this.onInstalled}
               ></hats-lite-preview>`
             : nothing}
         </section>
@@ -331,6 +375,12 @@ export class HatsLitePanel extends LitElement {
           ${this.rendered.has("designer")
             ? html`<hats-lite-designer .hass=${this.hass}></hats-lite-designer>`
             : nothing}
+        </section>
+        <section class="panel" id=${this.panelId("people")} role="tabpanel" aria-labelledby=${this.tabId("people")} tabindex="-1" ?hidden=${this.tab !== "people"}>
+          ${this.rendered.has("people") && this.peopleOk ? html`<hats-lite-people .hass=${this.hass}></hats-lite-people>` : nothing}
+        </section>
+        <section class="panel" id=${this.panelId("mods")} role="tabpanel" aria-labelledby=${this.tabId("mods")} tabindex="-1" ?hidden=${this.tab !== "mods"}>
+          ${this.rendered.has("mods") && this.modsOk ? html`<hats-lite-mods .hass=${this.hass} .active=${this.tab === "mods"}></hats-lite-mods>` : nothing}
         </section>
       </main>
       </div>

@@ -50,7 +50,21 @@ export function clearBlocked(): void {
 }
 
 const WS_ALLOWED =
-  /^(get_|lovelace\/config$|lovelace\/resources$|frontend\/get_|config\/[a-z_]+\/list$|config\/entity_registry\/list_for_display$|auth\/current_user$|render_template$|history\/stream$|logbook\/event_stream$|subscribe_entities$|subscribe_events$|energy\/get_prefs$|energy\/info$|weather\/subscribe_forecast$|todo\/item\/list$|recorder\/statistics_during_period$)/;
+  /^(get_|lovelace\/config$|lovelace\/resources$|frontend\/get_|config\/[a-z_]+\/list$|config\/entity_registry\/list_for_display$|auth\/current_user$|render_template$|history\/stream$|logbook\/event_stream$|subscribe_entities$|subscribe_events$|energy\/get_prefs$|energy\/info$|energy\/fossil_energy_consumption$|energy\/solar_forecast$|weather\/subscribe_forecast$|todo\/item\/list$|todo\/item\/subscribe$|calendar\/event\/subscribe$|recorder\/statistics_during_period$|recorder\/statistic_during_period$|recorder\/get_statistics_metadata$)/;
+
+const READ_EVENTS = new Set([
+  "state_changed",
+  "entity_registry_updated",
+  "device_registry_updated",
+  "area_registry_updated",
+  "label_registry_updated",
+  "floor_registry_updated",
+  "lovelace_updated",
+]);
+
+export function isReadEvent(eventType: unknown): eventType is string {
+  return typeof eventType === "string" && READ_EVENTS.has(eventType);
+}
 
 const API_ALLOWED = [
   "/api/states",
@@ -76,7 +90,7 @@ export function snapshotMessage(msg: unknown): Snapshot | undefined {
 
 export function allowedSnapshot(snap: Snapshot | undefined): snap is Snapshot {
   if (snap === undefined || !WS_ALLOWED.test(snap.type)) return false;
-  if (snap.type === "subscribe_events") return snap.msg.event_type === "state_changed";
+  if (snap.type === "subscribe_events") return isReadEvent(snap.msg.event_type);
   return true;
 }
 

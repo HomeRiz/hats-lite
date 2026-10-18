@@ -140,7 +140,7 @@ describe("shadow target views", () => {
 });
 
 describe("connection wrapper", () => {
-  it("is frozen so consumers cannot overwrite its methods", () => {
+  it("locks its methods so consumers cannot overwrite them", () => {
     const hass = {
       connection: { sendMessagePromise: async () => "real", connected: true, haVersion: "x" },
     };
@@ -148,7 +148,8 @@ describe("connection wrapper", () => {
       connection: { sendMessagePromise: unknown };
     };
     const conn = ro.connection;
-    expect(Object.isFrozen(conn)).toBe(true);
+    expect(Object.isExtensible(conn)).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(conn, "sendMessagePromise")?.configurable).toBe(false);
     expect(() => {
       "use strict";
       conn.sendMessagePromise = () => "hijacked";

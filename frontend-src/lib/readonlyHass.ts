@@ -130,6 +130,24 @@ export function makeReadOnlyHass<T extends object>(hass: T, owner: unknown = SHA
             recordBlocked(`api:${describeMethod(method)}`);
             return undefined;
           };
+        case "callApiRaw":
+          return async (method: unknown, path: unknown, params?: unknown, headers?: unknown, ...rest: unknown[]) => {
+            live();
+            if (typeof method !== "string" || !snapshotMethod(method)) {
+              recordBlocked(`api:${describeMethod(method)}`);
+              return undefined;
+            }
+            if (!isSafePath(path, true) || !isAllowedApi(path)) {
+              recordBlocked(`api-path:${pathLabel(path)}`);
+              return undefined;
+            }
+            const copy = typeof headers === "object" && headers !== null ? { ...headers } : headers;
+            if (hasMethodOverride(copy)) {
+              recordBlocked("api-header:method-override");
+              return undefined;
+            }
+            return apply(fn, target, [method, path, params, copy, ...rest]);
+          };
         case "fetchWithAuth":
           return async (path: unknown, init?: unknown) => {
             live();

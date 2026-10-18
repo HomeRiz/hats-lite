@@ -12,19 +12,22 @@ import {
   type DashboardOption,
   type LovelaceView,
 } from "./previewData";
+import { removing, renderInstallExtras, renderSlot, renderUninstall, usesSlot, type InstallHandlers, type InstallModel } from "./previewInstallView";
+import { renderLookSwitch } from "./realLook";
+import { renderMenuSwitch, renderModNote, renderShell } from "./previewChrome";
+import { frameWidth, sidebarOn, sidebarWidth } from "./previewChromeData";
+import { renderNav, renderNavSide, type NavDirection, type NavModel } from "./previewNav";
 import { stringsPreview as s } from "./strings.preview";
 
-const FRAME_WIDTH: Record<DeviceFrame, string> = {
-  desktop: "100%",
-  tablet: "820px",
-  phone: "390px",
-};
 const DENSITY_SCALE: Record<Density, string> = { normal: "1", compact: "0.85" };
 const FRAMES: DeviceFrame[] = ["desktop", "tablet", "phone"];
 const DENSITIES: Density[] = ["normal", "compact"];
 const MODES: PreviewMode[] = ["dark", "light"];
 
+export type ToolbarHide = "tablet" | "mode";
+
 export type ToolbarModel = {
+  hide?: readonly ToolbarHide[];
   dashboards: DashboardOption[];
   dashboardUrl: string | null;
   generatedDefault: boolean;
@@ -36,6 +39,9 @@ export type ToolbarModel = {
   mode: PreviewMode;
   compare: boolean;
   canCompare: boolean;
+  menu: boolean;
+  realAvailable: boolean;
+  real: boolean;
 };
 
 export type ToolbarHandlers = {
@@ -45,6 +51,8 @@ export type ToolbarHandlers = {
   onDensity(density: Density): void;
   onMode(mode: PreviewMode): void;
   onCompare(): void;
+  onMenu(menu: boolean): void;
+  onLook(real: boolean): void;
 };
 
 export type StageModel = {
@@ -55,6 +63,8 @@ export type StageModel = {
   candidateName: string;
   note: string;
   title: string;
+  menu: boolean;
+  modNote: boolean;
 };
 
 export type StageHandlers = {
@@ -71,14 +81,17 @@ export type ActionsModel = {
   collision: string;
   repo: string | undefined;
   error: string;
+  pending: boolean;
+  install: InstallModel;
 };
 
-export type ActionsHandlers = { onApply(): void; onTry(): void };
+export type ActionsHandlers = { onApply(): void; onTry(): void; install: InstallHandlers };
 
 export function actionsModel(
   candidate: PreviewCandidate,
   trying: boolean,
   error: string,
+  extra: { pending: boolean; install: InstallModel },
 ): ActionsModel {
   return {
     applicable: isApplicable(candidate),
@@ -87,6 +100,8 @@ export function actionsModel(
     collision: candidate.nameCollision ? s.nameCollision.replace("{name}", candidate.name) : "",
     repo: safeRepoUrl(candidate.repoUrl),
     error,
+    pending: extra.pending,
+    install: extra.install,
   };
 }
 
@@ -103,10 +118,6 @@ function optionLabel(option: DashboardOption, generated: boolean): string {
   return option.url_path === null && generated ? `${option.title} ${s.generatedSuffix}` : option.title;
 }
 
-function appBar(title: string): TemplateResult {
-  return html`<div class="appbar" aria-hidden="true"><i class="menu"></i><span class="title">${title}</span></div>`;
-}
-
 function compareSwitch(m: ToolbarModel, h: ToolbarHandlers): TemplateResult {
   const pick = (compare: boolean) => () => {
     if (m.compare !== compare) h.onCompare();
@@ -115,10 +126,11 @@ function compareSwitch(m: ToolbarModel, h: ToolbarHandlers): TemplateResult {
     <div class="field view-switch">${s.compareLabel}
       <div class="seg" role="group" aria-label=${s.compareLabel}>
         <button type="button" class="view-compare" aria-pressed=${m.compare ? "true" : "false"}
-          ?disabled=${!m.canCompare} @click=${pick(true)}>${s.compare}</button>
+          ?disabled=${!m.canCompare || m.real} aria-describedby=${ifDefined(m.real ? "compare-hint" : undefined)} @click=${pick(true)}>${s.compare}</button>
         <button type="button" class="view-theme" aria-pressed=${m.compare ? "false" : "true"}
-          ?disabled=${!m.canCompare} @click=${pick(false)}>${s.themeOnly}</button>
+          ?disabled=${!m.canCompare || m.real} @click=${pick(false)}>${s.themeOnly}</button>
       </div>
+      ${m.real ? html`<span id="compare-hint" class="compare-hint">${s.compareHint}</span>` : nothing}
     </div>`;
 }
 
@@ -138,27 +150,31 @@ export function renderToolbar(m: ToolbarModel, h: ToolbarHandlers): TemplateResu
           </label>`
         : nothing}
       <div class="seg" role="group" aria-label=${s.device}>
-        ${FRAMES.map((f) => choice(s[f], m.frame === f, () => h.onFrame(f)))}
+        ${FRAMES.filter((f) => !(f === "tablet" && m.hide?.includes("tablet"))).map((f) => choice(s[f], m.frame === f, () => h.onFrame(f)))}
       </div>
       <div class="seg" role="group" aria-label=${s.density}>
         ${DENSITIES.map((d) => choice(s[d], m.density === d, () => h.onDensity(d)))}
       </div>
-      <div class="seg" role="group" aria-label=${s.mode}>
+      ${m.hide?.includes("mode") ? nothing : html`<div class="seg" role="group" aria-label=${s.mode}>
         ${MODES.map((x) => choice(s[x], m.mode === x, () => h.onMode(x)))}
-      </div>
+      </div>`}
+      ${renderMenuSwitch({ frame: m.frame, menu: m.menu }, h)}
+      ${renderLookSwitch({ available: m.realAvailable, real: m.real }, h.onLook)}
       ${compareSwitch(m, h)}
     </div>`;
 }
 
 export function renderStage(m: StageModel, h: StageHandlers): TemplateResult {
+  const sidebar = sidebarOn(m.frame, m.menu);
   return html`
-    <div class="frame" style=${styleMap({
-      "--hats-lite-frame-width": FRAME_WIDTH[m.frame],
+    <div class="frame" data-sidebar=${sidebar ? "on" : "off"} style=${styleMap({
+      "--hats-lite-frame-width": frameWidth(m.frame, sidebar),
+      "--hats-lite-sidebar-width": sidebarWidth(sidebar),
       "--hats-lite-density-scale": DENSITY_SCALE[m.density],
     })}>
       <div class=${m.comparing ? "stage" : "stage solo"}>
-        <div class="pane current">${appBar(m.title)}<div class="cards" inert></div></div>
-        <div class="pane candidate" style=${styleMap(m.comparing ? { clipPath: clipPathFor(m.split) } : {})}>${appBar(m.title)}<div class="cards" inert></div></div>
+        <div class="pane current">${renderShell(m.title)}</div>
+        <div class="pane candidate" style=${styleMap(m.comparing ? { clipPath: clipPathFor(m.split) } : {})}>${renderShell(m.title)}</div>
         <div class="shield"></div>
         ${m.comparing
           ? html`<div class="divider" role="slider" tabindex="0"
@@ -180,17 +196,40 @@ export function renderStage(m: StageModel, h: StageHandlers): TemplateResult {
       </div>
       ${m.note ? html`<p class="empty-note" role="status">${m.note}</p>` : nothing}
     </div>
-    <p class="footnote">${s.footnote}</p>`;
+    <p class="footnote">${s.footnote}</p>
+    ${renderModNote(m.modNote)}`;
+}
+
+export function renderNavFrame(
+  nav: NavModel | null,
+  onMove: (direction: NavDirection) => void,
+  content: TemplateResult,
+): TemplateResult {
+  if (!nav) return content;
+  return html`
+    <div class="nav-frame">
+      ${renderNav(nav)}
+      ${renderNavSide(nav, -1, onMove)}
+      ${renderNavSide(nav, 1, onMove)}
+      <div class="nav-content">${content}</div>
+    </div>`;
 }
 
 export function renderActions(m: ActionsModel, h: ActionsHandlers): TemplateResult {
+  const busyRemoving = removing(m.install);
+  const note = m.collision ? "collision-note" : undefined;
+  const hideMain = m.install.inUse && !m.collision;
+  const apply = html`<button type="button" class="btn primary success apply" aria-describedby=${ifDefined(note)} ?disabled=${!m.applicable || m.pending || busyRemoving} @click=${h.onApply}>${m.collision && !m.applicable ? s.nameTaken : s.apply}</button>`;
   return html`
     <div class="actions">
-      <button type="button" class="btn primary apply" aria-describedby=${ifDefined(m.collision ? "collision-note" : undefined)} ?disabled=${!m.applicable} @click=${h.onApply}>${m.applicable ? s.apply : m.collision ? s.nameTaken : s.installFirst}</button>
-      <button type="button" class="btn try" aria-describedby=${ifDefined(m.collision ? "collision-note" : undefined)} ?disabled=${!m.tryable || m.trying} @click=${h.onTry}>${s.tryButton}</button>
+      ${hideMain ? nothing : usesSlot(m.install) ? renderSlot(m.install, h.install) : apply}
+      ${hideMain ? nothing : html`<button type="button" class="btn try" aria-describedby=${ifDefined(note)} ?disabled=${!m.tryable || m.trying || m.pending || busyRemoving} @click=${h.onTry}>${s.tryButton}</button>`}
+      ${hideMain && !m.install.canUninstall ? html`<span class="chip ok in-use-chip">${s.inUseChip}</span>` : nothing}
+      ${renderUninstall(m.install, h.install)}
       ${!m.applicable && m.repo
         ? html`<a class="chip link" href=${m.repo} target="_blank" rel="noopener noreferrer">${s.repoLink}</a>`
         : nothing}
+      ${renderInstallExtras(m.install, h.install)}
       ${m.collision ? html`<p id="collision-note" class="chip warn collision" role="status">${m.collision}</p>` : nothing}
       ${m.error ? html`<p class="error" role="alert">${m.error}</p>` : nothing}
     </div>`;

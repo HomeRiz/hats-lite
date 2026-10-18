@@ -220,7 +220,7 @@ describe("failing closed", () => {
 });
 
 describe("start-up retries", () => {
-  it("does not wait for a failing subscribe and retries it three times", async () => {
+  it("does not wait for a failing subscribe and backs off", async () => {
     const env = setup();
     env.control.subscribeError = new Error("nope");
     env.handlers["hats_lite/trial_state"] = trialStateAt(31);
@@ -228,13 +228,11 @@ describe("start-up retries", () => {
     await advance(0);
     expect(overlay()).not.toBeNull();
     expect(env.count("hats_lite/subscribe")).toBe(1);
-    await advance(5000);
+    await advance(500);
     expect(env.count("hats_lite/subscribe")).toBe(2);
-    await advance(5000);
+    await advance(1000);
     expect(env.count("hats_lite/subscribe")).toBe(3);
-    await advance(5000);
-    expect(env.count("hats_lite/subscribe")).toBe(4);
-    await advance(60_000);
+    await advance(2000);
     expect(env.count("hats_lite/subscribe")).toBe(4);
   });
 
@@ -244,7 +242,7 @@ describe("start-up retries", () => {
     env.applier.onHass(env.hass);
     await advance(0);
     env.control.subscribeError = null;
-    await advance(5000);
+    await advance(500);
     env.emit({ type: "revert", selection: { theme: "Old" } });
     expect(env.fire).toHaveBeenCalledWith("settheme", { theme: "Old" });
   });

@@ -119,7 +119,7 @@ describe("hats-lite-preview", () => {
     expect(placeholder?.textContent).toContain(s.placeholderCard);
   });
 
-  it("moves the divider by 2 percent with arrow keys and clamps at 2 and 98", async () => {
+  it("moves the divider by 5 percent with arrow keys, 10 with shift, and clamps at 2 and 98", async () => {
     const { hass } = makeHass();
     const el = await mount(installed, hass);
     const divider = el.shadowRoot!.querySelector<HTMLElement>(".divider")!;
@@ -128,10 +128,22 @@ describe("hats-lite-preview", () => {
     expect(divider.getAttribute("aria-valuenow")).toBe("50");
     press("ArrowRight");
     await el.updateComplete;
-    expect(divider.getAttribute("aria-valuenow")).toBe("52");
+    expect(divider.getAttribute("aria-valuenow")).toBe("55");
     press("ArrowLeft");
     await el.updateComplete;
     expect(divider.getAttribute("aria-valuenow")).toBe("50");
+    divider.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", shiftKey: true, bubbles: true }));
+    await el.updateComplete;
+    expect(divider.getAttribute("aria-valuenow")).toBe("60");
+    press("Home");
+    await el.updateComplete;
+    expect(divider.getAttribute("aria-valuenow")).toBe("2");
+    press("End");
+    await el.updateComplete;
+    expect(divider.getAttribute("aria-valuenow")).toBe("98");
+    press("ArrowLeft");
+    await el.updateComplete;
+    expect(divider.getAttribute("aria-valuenow")).toBe("93");
     for (let i = 0; i < 40; i += 1) press("ArrowLeft");
     await el.updateComplete;
     expect(divider.getAttribute("aria-valuenow")).toBe("2");
@@ -140,12 +152,12 @@ describe("hats-lite-preview", () => {
     expect(divider.getAttribute("aria-valuenow")).toBe("98");
   });
 
-  it("disables Apply with Install first and links the repo for a not installed candidate", async () => {
+  it("disables Apply and links the repo for a not installed candidate", async () => {
     const { hass } = makeHass();
     const el = await mount(notInstalled, hass);
     const apply = el.shadowRoot!.querySelector<HTMLButtonElement>(".apply")!;
     expect(apply.disabled).toBe(true);
-    expect(apply.textContent?.trim()).toBe("Install first");
+    expect(apply.textContent?.trim()).toBe("Apply");
     const link = el.shadowRoot!.querySelector<HTMLAnchorElement>("a")!;
     expect(link.getAttribute("href")).toBe("https://example.com/ocean");
     expect(link.getAttribute("target")).toBe("_blank");
@@ -364,7 +376,7 @@ describe("hats-lite-preview mode and layout", () => {
     await press("End");
     expect(divider.getAttribute("aria-valuenow")).toBe("98");
     await press("ArrowDown");
-    expect(divider.getAttribute("aria-valuenow")).toBe("96");
+    expect(divider.getAttribute("aria-valuenow")).toBe("93");
     await press("ArrowUp");
     expect(divider.getAttribute("aria-valuenow")).toBe("98");
   });

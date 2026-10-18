@@ -1,7 +1,9 @@
 import { LitElement, html, nothing, type PropertyValues, type TemplateResult } from "lit";
-import { buildDesignerVars, type DesignerInput } from "../lib/designer";
+import type { DesignerInput } from "../lib/designer";
+import { DEFAULT_CONTROLS, exceedsLimit, mergeOnBase, type Controls } from "../lib/designerBase";
 import { effectiveTintPercent, tintFromPosition, tintLimit } from "../lib/designerPalette";
 import { callWS } from "../lib/ws";
+import { advancedDraft } from "./advanced";
 import {
   EVENT_THEME_SAVED,
   type ModeChangeDetail,
@@ -10,7 +12,10 @@ import {
   type PreviewMode,
   type ThemeSavedDetail,
 } from "./contract";
-import { renderColorRow, renderRange } from "./designerControls";
+import { baseNames, renderBaseSelect } from "./designerBaseView";
+import { baseMissing, pickBase, baseTheme, buildSaved, skippedCount, type Saved } from "./designerBuild";
+import { renderModeSection, renderNotices } from "./designerNotices";
+import { renderColorRow, renderRange, renderSaveBar, renderUploadArea } from "./designerControls";
 import { designerStyles } from "./designerStyles";
 import {
   errorInfo,
@@ -28,10 +33,9 @@ import { stringsDesigner } from "./strings.designer";
 
 type Background = NonNullable<DesignerInput["background"]>;
 type SliderKey = "radius" | "glassBlur";
-type Modes = { dark: Record<string, string>; light: Record<string, string> };
-
 const PRESETS: readonly { label: string; value: string }[] = [];
-const CONTROL_KEYS = ["main", "accent", "radius", "glassBlur", "tint", "mode", "background"] as const;
+const HIDDEN_PREVIEW_CONTROLS = ["tablet", "mode"] as const;
+const CONTROL_KEYS = ["base", "main", "accent", "radius", "glassBlur", "tint", "mode", "background"] as const;
 const SLIDERS: Record<SliderKey, { label: string; min: number; max: number; unit: string }> = {
   radius: { label: stringsDesigner.radius, min: 0, max: 48, unit: "px" },
   glassBlur: { label: stringsDesigner.blur, min: 0, max: 40, unit: "px" },
@@ -40,6 +44,7 @@ const SLIDERS: Record<SliderKey, { label: string; min: number; max: number; unit
 export class HatsLiteDesigner extends LitElement {
   static properties = {
     hass: { attribute: false },
+    base: { state: true },
     main: { state: true },
     accent: { state: true },
     radius: { state: true },
@@ -57,6 +62,7 @@ export class HatsLiteDesigner extends LitElement {
     saving: { state: true },
     saveMessage: { state: true },
     saveFailed: { state: true },
+    baseNotice: { state: true },
     dragOver: { state: true },
   };
 
@@ -64,6 +70,8 @@ export class HatsLiteDesigner extends LitElement {
 
   dragOver = false;
   hass?: PanelHass;
+  base = "";
+  baseControls: Controls = DEFAULT_CONTROLS;
   main = "#03a9f4";
   accent = "#ff9800";
   radius = 12;
@@ -81,8 +89,16 @@ export class HatsLiteDesigner extends LitElement {
   saving = false;
   saveMessage = "";
   saveFailed = false;
+  baseNotice = "";
 
   protected willUpdate(changed: PropertyValues): void {
+    if (baseMissing(this.hass, this.base)) {
+      this.base = "";
+      this.baseControls = DEFAULT_CONTROLS;
+      this.baseNotice = stringsDesigner.baseMissing;
+      this.rebuild();
+      return;
+    }
     if (!this.candidate || CONTROL_KEYS.some((key) => changed.has(key))) {
       this.rebuild();
     }
@@ -93,6 +109,9 @@ export class HatsLiteDesigner extends LitElement {
     return html`
       <div class="layout">
         <div class="controls">
+          <hats-lite-advanced .hass=${this.hass} .draft=${advancedDraft(this)}></hats-lite-advanced>
+          ${renderBaseSelect(baseNames(this.hass), this.base, (event) => this.onBase(event))}
+          ${renderNotices(this.baseNotice, skippedCount(this.hass, this.base, this.mode), this.errorField, this.errorMessage)}
           <section class="group">
             <h3>${stringsDesigner.colors}</h3>
             ${this.renderColor("main", stringsDesigner.mainColor)}
@@ -120,16 +139,7 @@ export class HatsLiteDesigner extends LitElement {
             ${this.errorField === "background" ? html`<p class="error" role="alert">${this.errorMessage}</p>` : nothing}
             ${admin ? this.renderUpload() : html`<p class="hint">${stringsDesigner.uploadAdminOnly}</p>`}
           </section>
-          <section class="group">
-            <h3>${stringsDesigner.mode}</h3>
-            <div class="seg" role="group" aria-label=${stringsDesigner.mode}>
-              ${(["dark", "light"] as const).map(
-                (mode) => html`<button type="button" data-field="mode" data-mode=${mode}
-                  aria-pressed=${String(this.mode === mode)}
-                  @click=${() => this.setMode(mode)}>${mode === "dark" ? stringsDesigner.modeDark : stringsDesigner.modeLight}</button>`,
-              )}
-            </div>
-          </section>
+          ${renderModeSection(this.mode, (mode) => this.setMode(mode))}
           ${admin ? this.renderSave() : html`<p class="hint">${stringsDesigner.saveAdminOnly}</p>`}
         </div>
         <div class="stage">
@@ -143,6 +153,7 @@ export class HatsLiteDesigner extends LitElement {
             .candidate=${this.candidate}
             .mode=${this.mode}
             .showActions=${false}
+            .hideControls=${HIDDEN_PREVIEW_CONTROLS}
             .defaultCompare=${false}
             @hats-lite-mode-change=${(event: Event) => this.onPreviewMode(event)}
           ></hats-lite-preview>
@@ -185,50 +196,31 @@ export class HatsLiteDesigner extends LitElement {
     return tintFromPosition(this.tint, tintLimit(this.main, mode));
   }
 
-  private setTint(event: Event): void {
-    this.tint = Number((event.target as HTMLInputElement).value);
-  }
+  private setTint(event: Event): void { this.tint = Number((event.target as HTMLInputElement).value); }
 
   private renderUpload(): TemplateResult {
-    return html`
-      <button type="button" class=${this.dragOver ? "drop over" : "drop"} data-action="upload"
-        ?disabled=${this.uploading}
-        @click=${() => this.fileInput()?.click()}
-        @dragover=${(event: DragEvent) => this.onDragOver(event)}
-        @dragleave=${() => { this.dragOver = false; }}
-        @drop=${(event: DragEvent) => this.onDrop(event)}>
-        <span class="drop-title">${this.uploading ? stringsDesigner.uploading : stringsDesigner.uploadLabel}</span>
-        <span class="drop-hint">${stringsDesigner.uploadHint}</span>
-      </button>
-      <input class="visually-hidden" type="file" tabindex="-1" aria-hidden="true"
-        accept="image/png,image/jpeg,image/webp,image/gif"
-        ?disabled=${this.uploading}
-        @change=${(event: Event) => this.onFile(event)} />
-      ${this.uploadError ? html`<p class="error" role="alert">${this.uploadError}</p>` : nothing}
-      ${this.uploadNotice ? html`<p class="hint" role="status" data-notice="restart">${this.uploadNotice}</p>` : nothing}
-    `;
+    return renderUploadArea({
+      over: this.dragOver,
+      uploading: this.uploading,
+      error: this.uploadError,
+      notice: this.uploadNotice,
+      onPick: () => this.fileInput()?.click(),
+      onDragOver: (event) => this.onDragOver(event),
+      onDragLeave: () => { this.dragOver = false; },
+      onDrop: (event) => this.onDrop(event),
+      onFile: (event) => this.onFile(event),
+    });
   }
 
   private renderSave(): TemplateResult {
-    const failed = this.saveFailed;
-    return html`
-      <div class="bar">
-        <label>
-          <span class="visually-hidden">${stringsDesigner.nameLabel}</span>
-          <input type="text" maxlength="60" data-field="name" placeholder=${stringsDesigner.nameLabel}
-            .value=${this.themeName}
-            @input=${(event: Event) => this.setName(event)} />
-        </label>
-        <button type="button" class="btn primary" data-action="save" ?disabled=${this.saving}
-          @click=${() => this.onSave()}>
-          ${this.saving ? stringsDesigner.saving : stringsDesigner.saveButton}
-        </button>
-        ${this.saveMessage
-          ? html`<span class=${failed ? "chip warn message" : "chip ok message"}
-              role=${failed ? "alert" : "status"}>${this.saveMessage}</span>`
-          : nothing}
-      </div>
-    `;
+    return renderSaveBar({
+      name: this.themeName,
+      saving: this.saving,
+      message: this.saveMessage,
+      failed: this.saveFailed,
+      onName: (event) => this.setName(event),
+      onSave: () => this.onSave(),
+    });
   }
 
   private designerInput(mode: PreviewMode): DesignerInput {
@@ -243,13 +235,20 @@ export class HatsLiteDesigner extends LitElement {
     };
   }
 
+  private finalVars(mode: PreviewMode): Record<string, string> {
+    const theme = baseTheme(this.hass, this.base);
+    const vars = mergeOnBase(theme, this.baseControls, this.designerInput(mode));
+    if (exceedsLimit(vars)) throw new Error("Too many variables");
+    return vars;
+  }
+
   private warnings(): string[] {
     return warningMessages(this.designerInput(this.mode));
   }
 
   private rebuild(): void {
     try {
-      const vars = buildDesignerVars(this.designerInput(this.mode));
+      const vars = this.finalVars(this.mode);
       this.candidate = { name: stringsDesigner.draftName, vars, installed: false, canApply: false };
       this.errorField = "";
       this.errorMessage = "";
@@ -260,17 +259,32 @@ export class HatsLiteDesigner extends LitElement {
     }
   }
 
-  private buildModes(): Modes | undefined {
+  private buildModes(): Saved | undefined {
     try {
-      return {
-        dark: buildDesignerVars(this.designerInput("dark")),
-        light: buildDesignerVars(this.designerInput("light")),
-      };
+      return buildSaved(baseTheme(this.hass, this.base), (mode) => this.finalVars(mode));
     } catch (err) {
       this.saveFailed = true;
       this.saveMessage = errorInfo(err).message;
       return undefined;
     }
+  }
+
+  private onBase(event: Event): void {
+    const name = (event.target as HTMLSelectElement).value;
+    const picked = pickBase(this.hass, name, this.mode);
+    const next = picked.controls;
+    this.base = picked.base;
+    this.baseNotice = "";
+    this.baseControls = next;
+    this.main = next.main;
+    this.accent = next.accent;
+    this.radius = next.radius;
+    this.glassBlur = next.blur;
+    this.tint = next.tint;
+    this.mode = next.mode;
+    this.background = { kind: "none" };
+    this.uploadNotice = "";
+    this.saveMessage = "";
   }
 
   private setText(key: "main" | "accent", event: Event): void {
@@ -361,7 +375,7 @@ export class HatsLiteDesigner extends LitElement {
     this.saving = true;
     this.saveMessage = "";
     try {
-      const response = await callWS(hass, { type: "hats_lite/save_theme", name, variables: modes.dark, modes });
+      const response = await callWS(hass, { type: "hats_lite/save_theme", name, variables: modes.variables, modes: modes.modes });
       this.dispatchEvent(
         new CustomEvent<ThemeSavedDetail>(EVENT_THEME_SAVED, {
           bubbles: true,

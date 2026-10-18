@@ -1,23 +1,11 @@
 import { LitElement, html, nothing, type PropertyValues } from "lit";
 import { disposeReadOnlyHass, makeReadOnlyHass } from "../lib/readonlyHass";
 import { splitFromPointer } from "../lib/split";
+import { EVENT_MODE_CHANGE, type Density, type DeviceFrame, type ModeChangeDetail, type PanelHass, type PreviewCandidate, type PreviewMode } from "./contract";
 import {
-  EVENT_MODE_CHANGE,
-  type Density,
-  type DeviceFrame,
-  type ModeChangeDetail,
-  type PanelHass,
-  type PreviewCandidate,
-  type PreviewMode,
-} from "./contract";
-import {
-  candidateVars,
   createPreviewCard,
-  isApplicable,
-  isTryable,
   listDashboards,
   loadCardHelpers,
-  safeRepoUrl,
   type CardConfig,
   type DashboardOption,
   type LovelaceConfig,
@@ -36,12 +24,19 @@ import {
   type DashboardEntry,
 } from "./previewDashboards";
 import { readCompare, writeCompare } from "./previewCompare";
-import { actionsModel, emptyModeNote, renderActions, renderStage, renderToolbar } from "./previewView";
+import { hasModKeys, readMenu, writeMenu } from "./previewChromeData";
+import { PreviewActions } from "./previewActions";
+import type { InstallTarget } from "./previewInstall";
+import type { NavModel } from "./previewNav";
+import { navStyles } from "./previewNavStyles";
+import { emptyModeNote, renderNavFrame, renderStage, renderToolbar, type ToolbarHide } from "./previewView";
+import { loadCardTranslations } from "./previewTranslations";
 import { StageGuard } from "./previewStageGuard";
 import { applyStageVars, bindCardHass } from "./previewPanes";
 import { previewStyles } from "./previewStyles";
 import { capturePointer, releasePointer, splitForKey } from "./previewKeys";
-import { explicitMode, runTrial } from "./previewTrial";
+import { RealLookCtl } from "./realLookCtl";
+import { realLookStyles, renderRealLook } from "./realLook";
 import { stringsPreview as s } from "./strings.preview";
 
 const PANE_CARDS = [".pane.current .cards", ".pane.candidate .cards"];
@@ -53,6 +48,10 @@ export class HatsLitePreview extends LitElement {
     mode: { attribute: false },
     showActions: { type: Boolean, attribute: "show-actions" },
     defaultCompare: { attribute: false },
+    hideControls: { attribute: false },
+    install: { attribute: false },
+    uninstall: { attribute: false },
+    nav: { attribute: false },
     dashboards: { state: true },
     dashboardUrl: { state: true },
     views: { state: true },
@@ -65,16 +64,18 @@ export class HatsLitePreview extends LitElement {
     error: { state: true },
     trying: { state: true },
     compare: { state: true },
+    menu: { state: true },
     defaultGenerated: { state: true },
     usingSample: { state: true },
   };
 
-  static styles = previewStyles;
+  static styles = [previewStyles, navStyles, realLookStyles];
 
   hass?: PanelHass;
   candidate?: PreviewCandidate | null;
   mode?: PreviewMode;
   showActions = true;
+  hideControls?: readonly ToolbarHide[];
   dashboards: DashboardOption[] = [];
   dashboardUrl: string | null = null;
   views: LovelaceView[] = [];
@@ -88,8 +89,13 @@ export class HatsLitePreview extends LitElement {
   trying = false;
   defaultCompare = true;
   compare?: boolean;
+  menu = readMenu();
   defaultGenerated = false;
   usingSample = false;
+  install?: InstallTarget | null;
+  uninstall?: InstallTarget | null;
+  nav?: NavModel | null;
+  userMode?: PreviewMode;
 
   private cache: DashboardCache = new Map();
   private sample?: LovelaceConfig;
@@ -100,8 +106,9 @@ export class HatsLitePreview extends LitElement {
   private dragging = false;
   private readOnly?: PanelHass;
   private readOnlySource?: PanelHass;
-  private userMode?: PreviewMode;
+  private actions = new PreviewActions(this);
   private guard = new StageGuard();
+  private real = new RealLookCtl(this);
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -125,11 +132,15 @@ export class HatsLitePreview extends LitElement {
     if (changed.has("hass") && this.hass && !this.dashboardsLoaded) void this.loadDashboards();
     this.attachHass();
     this.applyVars();
+    this.real.sync(this.candidate);
+    if (this.real.leftReal(this.candidate) && !changed.has("cards")) void this.buildCards();
+    this.dataset.scheme = this.hass?.themes?.darkMode ? "dark" : "light";
     if (changed.has("cards")) void this.buildCards();
     this.guard.sync(this.renderRoot);
   }
 
   private comparing(): boolean {
+    if (this.real.active(this.candidate)) return false;
     return this.compare ?? readCompare(this.defaultCompare);
   }
 
@@ -223,7 +234,7 @@ export class HatsLitePreview extends LitElement {
 
   private async buildCards(): Promise<void> {
     const token = ++this.buildToken;
-    const helpers = await loadCardHelpers();
+    const [helpers] = await Promise.all([loadCardHelpers(), loadCardTranslations(this.hass)]);
     const panes = await Promise.all(PANE_CARDS.map(() => this.buildPane(helpers)));
     if (token !== this.buildToken) return;
     PANE_CARDS.forEach((selector, index) => {
@@ -264,7 +275,12 @@ export class HatsLitePreview extends LitElement {
   }
 
   private onKey(event: KeyboardEvent): void {
-    const next = splitForKey(event.key, this.split);
+    const next = splitForKey(
+      event.key,
+      this.split,
+      event.shiftKey,
+      event.altKey || event.ctrlKey || event.metaKey,
+    );
     if (next === null) return;
     event.preventDefault();
     this.split = next;
@@ -287,49 +303,15 @@ export class HatsLitePreview extends LitElement {
     releasePointer(event);
   }
 
-  private onApply(): void {
-    const candidate = this.candidate;
-    if (!candidate || !isApplicable(candidate)) return;
-    const detail: { theme: string; dark?: boolean } = { theme: candidate.name };
-    const chosen = explicitMode(this.userMode, this.mode, this.hass);
-    if (chosen) detail.dark = chosen === "dark";
-    this.dispatchEvent(new CustomEvent("settheme", { detail, bubbles: true, composed: true }));
-  }
-
-  private async onTry(): Promise<void> {
-    const candidate = this.candidate;
-    if (!candidate || !isTryable(candidate) || this.trying) return;
-    this.error = "";
-    this.trying = true;
-    this.error = await runTrial(this.hass, candidate, explicitMode(this.userMode, this.mode, this.hass));
-    this.trying = false;
-  }
-
   private setMode(mode: PreviewMode): void {
     this.userMode = mode;
     this.mode = mode;
-    this.dispatchEvent(
-      new CustomEvent<ModeChangeDetail>(EVENT_MODE_CHANGE, {
-        detail: { mode },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
-  private renderCandidateActions() {
-    const candidate = this.candidate;
-    if (!this.showActions || !candidate) return nothing;
-    return renderActions(actionsModel(candidate, this.trying, this.error), {
-      onApply: () => this.onApply(),
-      onTry: () => void this.onTry(),
-    });
+    const init = { detail: { mode }, bubbles: true, composed: true };
+    this.dispatchEvent(new CustomEvent<ModeChangeDetail>(EVENT_MODE_CHANGE, init));
   }
 
   private renderStageView() {
     const candidate = this.candidate;
-    const mode = this.effectiveMode();
-    const note = emptyModeNote(candidate, mode);
     return renderStage(
       {
         frame: this.frame,
@@ -337,8 +319,10 @@ export class HatsLitePreview extends LitElement {
         split: this.split,
         comparing: this.comparing() || !candidate,
         candidateName: candidate ? candidate.name : s.noCandidate,
-        note,
+        note: emptyModeNote(candidate, this.effectiveMode()),
         title: dashboardTitle(this.dashboards, this.dashboardUrl),
+        menu: this.menu,
+        modNote: hasModKeys(candidate),
       },
       {
         onKey: (e) => this.onKey(e),
@@ -349,39 +333,57 @@ export class HatsLitePreview extends LitElement {
     );
   }
 
+  private renderBody() {
+    const item = this.real.active(this.candidate) && this.real.item(this.candidate);
+    if (item) return renderRealLook(item, this.effectiveMode(), () => this.real.fail(this.candidate));
+    return this.notice ? html`<p class="notice" role="status">${this.notice}</p>` : this.renderStageView();
+  }
+
   render() {
     const showViews = this.views.length > 0 && hasCards(this.config);
     return html`
-      ${renderToolbar(
-        {
-          dashboards: this.dashboards,
-          dashboardUrl: this.dashboardUrl,
-          generatedDefault: this.defaultGenerated,
-          views: this.views,
-          viewIndex: this.viewIndex,
-          showViews,
-          frame: this.frame,
-          density: this.density,
-          mode: this.effectiveMode(),
-          compare: this.comparing(),
-          canCompare: !!this.candidate,
-        },
-        {
-          onDashboard: (e) => this.onDashboard(e),
-          onView: (e) => this.onView(e),
-          onFrame: (f) => { this.frame = f; },
-          onDensity: (d) => { this.density = d; },
-          onMode: (m) => this.setMode(m),
-          onCompare: () => {
-            if (!this.candidate) return;
-            this.compare = !this.comparing();
-            writeCompare(this.compare, this.defaultCompare);
-          },
-        },
+      ${renderNavFrame(
+        this.nav ? { ...this.nav, locked: this.trying } : null,
+        (d) => this.actions.moveBy(d),
+        html`
+          ${renderToolbar(
+              {
+                dashboards: this.dashboards,
+                dashboardUrl: this.dashboardUrl,
+                generatedDefault: this.defaultGenerated,
+                views: this.views,
+                viewIndex: this.viewIndex,
+                showViews,
+                frame: this.frame,
+                density: this.density,
+                mode: this.effectiveMode(),
+                compare: this.comparing(),
+                canCompare: !!this.candidate,
+                hide: this.hideControls,
+                menu: this.menu,
+                realAvailable: !!this.real.item(this.candidate),
+                real: this.real.active(this.candidate),
+              },
+              {
+                onDashboard: (e) => this.onDashboard(e),
+                onView: (e) => this.onView(e),
+                onFrame: (f) => { this.frame = f; },
+                onDensity: (d) => { this.density = d; },
+                onMode: (m) => this.setMode(m),
+                onMenu: (m) => { this.menu = m; writeMenu(m); },
+                onLook: (r) => this.real.choose(r),
+                onCompare: () => {
+                  if (!this.candidate) return;
+                  this.compare = !this.comparing();
+                  writeCompare(this.compare, this.defaultCompare);
+                },
+              },
+        )}
+          ${this.usingSample ? html`<p class="notice" role="status">${s.sampleNote}</p>` : nothing}
+          ${this.renderBody()}
+        `,
       )}
-      ${this.usingSample ? html`<p class="notice" role="status">${s.sampleNote}</p>` : nothing}
-      ${this.notice ? html`<p class="notice" role="status">${this.notice}</p>` : this.renderStageView()}
-      ${this.renderCandidateActions()}
+      ${this.actions.render()}
     `;
   }
 }

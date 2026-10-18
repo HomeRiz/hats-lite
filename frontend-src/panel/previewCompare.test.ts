@@ -95,8 +95,8 @@ describe("compare toggle", () => {
     await el.updateComplete;
     toggle(el).click();
     await el.updateComplete;
-    expect(divider(el)!.getAttribute("aria-valuenow")).toBe("52");
-    expect(pane(el).style.clipPath).toContain("52%");
+    expect(divider(el)!.getAttribute("aria-valuenow")).toBe("55");
+    expect(pane(el).style.clipPath).toContain("55%");
   });
 
   it("persists the choice in localStorage and reads it back", async () => {
@@ -157,7 +157,7 @@ describe("designer default", () => {
 
   it("draws the app header strip in both panes and the candidate baseline", async () => {
     const el = await mountDesigner();
-    const bars = el.shadowRoot!.querySelectorAll(".pane > .appbar");
+    const bars = el.shadowRoot!.querySelectorAll(".pane .appbar");
     expect(bars.length).toBe(2);
     expect(bars[0].textContent).toContain("Overview");
     expect(pane(el).style.getPropertyValue("--primary-background-color")).not.toBe("");

@@ -164,7 +164,7 @@ describe("createApplier confirmation", () => {
     await advance(34_000);
     expect(env.fire).not.toHaveBeenCalled();
     await advance(1000);
-    expect(env.events.slice(-3)).toEqual([
+    expect(env.events.filter((e) => e !== "hats_lite/effective").slice(-3)).toEqual([
       "hats_lite/trial_cancel",
       "hats_lite/outcome_ack",
       `fire:settheme:${JSON.stringify(PREVIOUS)}`,
@@ -191,7 +191,7 @@ describe("createApplier confirmation", () => {
     await advance(32_000);
     button("Revert").click();
     await advance(0);
-    expect(env.events.slice(-3)).toEqual([
+    expect(env.events.filter((e) => e !== "hats_lite/effective").slice(-3)).toEqual([
       "hats_lite/trial_cancel",
       "hats_lite/outcome_ack",
       `fire:settheme:${JSON.stringify(PREVIOUS)}`,
@@ -220,7 +220,7 @@ describe("createApplier confirmation", () => {
     button("Keep").click();
     await advance(0);
     expect(overlay()).toBeNull();
-    expect(env.events.slice(-3)).toEqual([
+    expect(env.events.filter((e) => e !== "hats_lite/effective").slice(-3)).toEqual([
       "hats_lite/trial_cancel",
       "hats_lite/outcome_ack",
       `fire:settheme:${JSON.stringify(PREVIOUS)}`,

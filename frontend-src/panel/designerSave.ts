@@ -23,6 +23,7 @@ export function saveErrorMessage(err: unknown): string {
   if (code === "name_exists") return stringsDesigner.nameExists;
   if (code === "reserved_name") return stringsDesigner.nameReserved;
   if (code === "invalid_format") return stringsDesigner.formatInvalid;
+  if (code === "invalid_value") return stringsDesigner.valueRejected;
   return messageFrom(err, stringsDesigner.saveFailed);
 }
 
@@ -47,6 +48,8 @@ export function errorInfo(err: unknown): { field: ErrorField; message: string } 
   if (text === "Background too long") {
     return { field: "background", message: stringsDesigner.backgroundTooLong };
   }
+  if (text === "Base theme missing") return { field: "", message: stringsDesigner.baseMissing };
+  if (text === "Too many variables") return { field: "", message: stringsDesigner.baseTooLarge };
   return { field: "color", message: stringsDesigner.invalidInput };
 }
 

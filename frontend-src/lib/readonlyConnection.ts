@@ -1,10 +1,11 @@
 import {
   allowedSnapshot,
   blockedType,
+  isReadEvent,
   recordBlocked,
   snapshotMessage,
 } from "./readonlyPolicy";
-import { apply, freeze, rawGet, weakGet, weakSet, type AnyFn } from "./viewIntrinsics";
+import { apply, defineOwn, hasOwn, ownDescriptor, ownKeys, rawGet, weakGet, weakSet, type AnyFn } from "./viewIntrinsics";
 
 export type Teardown = {
   disposed: boolean;
@@ -98,11 +99,11 @@ export function makeConnection(connection: unknown, state: Teardown): object | u
       return track(callback, (forward) => call("subscribeMessage", forward, snap.msg, options));
     },
     async subscribeEvents(callback: unknown, eventType?: unknown) {
-      if (eventType !== "state_changed") {
+      if (!isReadEvent(eventType)) {
         recordBlocked(`ws:subscribe_events:${typeof eventType === "string" ? eventType : "invalid"}`);
         return noop;
       }
-      return track(callback, (forward) => call("subscribeEvents", forward, "state_changed"));
+      return track(callback, (forward) => call("subscribeEvents", forward, eventType));
     },
     addEventListener(type: unknown, listener: unknown) {
       if (typeof type !== "string" || !LISTENABLE.has(type) || typeof listener !== "function") {
@@ -138,7 +139,25 @@ export function makeConnection(connection: unknown, state: Teardown): object | u
       call("removeEventListener", type, entry.forward);
     },
   };
-  const frozen = freeze(wrapped);
-  weakSet(state.connections, connection, frozen);
-  return frozen;
+  lockMembers(wrapped);
+  weakSet(state.connections, connection, wrapped);
+  return wrapped;
+}
+
+function lockMembers(target: object): void {
+  for (const key of ownKeys(target)) {
+    const desc = ownDescriptor(target, key);
+    if (!desc) continue;
+    const locked: PropertyDescriptor = Object.create(null);
+    locked.configurable = false;
+    locked.enumerable = desc.enumerable;
+    if (hasOwn(desc, "value")) {
+      locked.value = desc.value;
+      locked.writable = false;
+    } else {
+      locked.get = desc.get;
+      locked.set = desc.set;
+    }
+    defineOwn(target, key, locked);
+  }
 }

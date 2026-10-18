@@ -46,6 +46,7 @@ describe("save feedback", () => {
     ["name_exists", stringsDesigner.nameExists],
     ["reserved_name", stringsDesigner.nameReserved],
     ["invalid_format", stringsDesigner.formatInvalid],
+    ["invalid_value", stringsDesigner.valueRejected],
   ])("maps the server code %s to a clear message", async (code, message) => {
     const send = vi.fn(async () => {
       throw { code, message: "raw server text" };

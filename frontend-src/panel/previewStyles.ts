@@ -1,4 +1,5 @@
 import { css } from "lit";
+import { chromeStyles } from "./previewChromeStyles";
 import { controls, tokens } from "./ui";
 
 const layout = css`
@@ -26,7 +27,7 @@ const layout = css`
     padding: 0 34px 0 14px;
     font: inherit;
     border-radius: var(--hl-radius-pill);
-    border: 1px solid var(--hl-line);
+    border: 1px solid var(--hl-edge);
     background-color: var(--hl-surface);
     background-image: linear-gradient(45deg, transparent 50%, var(--hl-muted) 50%),
       linear-gradient(135deg, var(--hl-muted) 50%, transparent 50%);
@@ -39,7 +40,7 @@ const layout = css`
   select.pill:focus-visible,
   .chip-btn:focus-visible,
   .chip.link:focus-visible {
-    outline: 2px solid var(--hl-accent);
+    outline: 2px solid var(--hl-focus);
     outline-offset: 2px;
   }
   .chip-btn[disabled] {
@@ -83,32 +84,6 @@ const layout = css`
     background-repeat: no-repeat;
     background-attachment: scroll;
     pointer-events: none;
-  }
-  .appbar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    height: 28px;
-    margin: 8px 8px 0;
-    padding: 0 10px;
-    border-radius: 10px 10px 4px 4px;
-    background: var(--app-header-background-color, var(--primary-color, #03a9f4));
-    color: var(--app-header-text-color, var(--text-primary-color, #fff));
-    font-size: 13px;
-    font-weight: 600;
-    overflow: hidden;
-  }
-  .appbar .menu {
-    flex: none;
-    width: 14px;
-    height: 10px;
-    background: linear-gradient(currentColor 0 2px, transparent 2px 4px, currentColor 4px 6px, transparent 6px 8px, currentColor 8px 10px);
-  }
-  .appbar .title {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .pane.current {
     z-index: 0;
@@ -176,7 +151,7 @@ const layout = css`
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   }
   .divider:focus-visible::before {
-    box-shadow: 0 0 0 3px var(--hl-accent), 0 2px 8px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 0 0 3px var(--hl-focus), 0 2px 8px rgba(0, 0, 0, 0.35);
   }
   .badges {
     position: absolute;
@@ -248,4 +223,4 @@ const layout = css`
   }
 `;
 
-export const previewStyles = [tokens, controls, layout];
+export const previewStyles = [tokens, controls, layout, chromeStyles];

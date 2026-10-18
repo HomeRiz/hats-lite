@@ -119,3 +119,31 @@ describe("file theme picker with an old server", () => {
     await vi.waitFor(() => expect(preview.candidate?.name).toBe("three"));
   });
 });
+
+describe("file theme picker feedback", () => {
+  it("shows a loading line and then a short error when the fetch fails", async () => {
+    let fail: (e: Error) => void = () => undefined;
+    const send = vi.fn((msg: Record<string, unknown>) => {
+      if (msg.type === "hats_lite/theme") return new Promise((_r, reject) => (fail = reject));
+      return Promise.resolve([]);
+    });
+    const hass = {
+      connection: { sendMessagePromise: send, subscribeMessage: vi.fn(async () => () => undefined) },
+      themes: { darkMode: true, themes: {} },
+    } as unknown as PanelHass;
+    await mount(hass);
+    open({ entry, themes: { one: files.one }, names: allNames, theme: "one" });
+    await panel.updateComplete;
+    const status = () => panel.shadowRoot!.querySelector(".file-theme .file-status");
+    expect(status()).toBeNull();
+    pick("two");
+    await panel.updateComplete;
+    expect(status()?.getAttribute("role")).toBe("status");
+    fail(new Error("boom"));
+    await vi.waitFor(() => expect(status()?.getAttribute("role")).toBe("alert"));
+    expect(status()?.textContent?.trim()).not.toBe("");
+    pick("one");
+    await panel.updateComplete;
+    expect(status()).toBeNull();
+  });
+});

@@ -278,7 +278,7 @@ describe("hats-lite-designer upload and mode", () => {
 });
 
 describe("hats-lite-designer mode control", () => {
-  it("keeps the mode buttons in step with the preview toggle", async () => {
+  it("drives the preview from the left mode buttons", async () => {
     const { hass } = makeHass({ isAdmin: false });
     const el = await mount(hass);
     const modeButton = (mode: string) =>
@@ -290,19 +290,12 @@ describe("hats-lite-designer mode control", () => {
     expect(modeButton("light").getAttribute("aria-pressed")).toBe("true");
     expect(modeButton("dark").getAttribute("aria-pressed")).toBe("false");
 
-    const clickPreview = async (label: string) => {
-      const preview = previewOf(el);
-      const button = Array.from(preview.shadowRoot!.querySelectorAll("button")).find(
-        (b) => b.textContent?.trim() === label,
-      )!;
-      button.click();
-      await el.updateComplete;
-    };
-    await clickPreview("Dark");
+    expect(previewOf(el).mode).toBe("light");
+    modeButton("dark").click();
+    await el.updateComplete;
+    expect(el.mode).toBe("dark");
+    expect(previewOf(el).mode).toBe("dark");
     expect(modeButton("dark").getAttribute("aria-pressed")).toBe("true");
-    await clickPreview("Light");
-    expect(el.mode).toBe("light");
-    expect(modeButton("light").getAttribute("aria-pressed")).toBe("true");
   });
 
   it("shows hex readouts and live slider values", async () => {

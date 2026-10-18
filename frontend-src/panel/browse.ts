@@ -252,14 +252,27 @@ export class HatsLiteBrowse extends LitElement {
     }
   };
 
+  async openEntry(entry: CatalogEntry): Promise<ThemeSelectedDetail> {
+    const guess = this.atlas.theme(entry.full_name, entry.last_commit)?.name;
+    const opened = await openBundle(this.hassRef, this.known, this.cache, this.bundles, entry, guess);
+    return { entry, ...opened };
+  }
+
+  async refreshCatalog(): Promise<CatalogEntry[]> {
+    await this.loadCatalog();
+    return this.entries;
+  }
+
+  visibleEntries(): CatalogEntry[] {
+    return this.filtered(this.query.trim().toLowerCase()).map((row) => row.entry);
+  }
+
   private async selectTheme(entry: CatalogEntry): Promise<void> {
     if (this.busyName || !this.hassRef) return;
     this.busyName = entry.full_name;
     this.cardError = null;
     try {
-      const guess = this.atlas.theme(entry.full_name, entry.last_commit)?.name;
-      const opened = await openBundle(this.hassRef, this.known, this.cache, this.bundles, entry, guess);
-      const detail: ThemeSelectedDetail = { entry, ...opened };
+      const detail = await this.openEntry(entry);
       this.dispatchEvent(
         new CustomEvent<ThemeSelectedDetail>(EVENT_THEME_SELECTED, {
           bubbles: true,
@@ -308,8 +321,8 @@ export class HatsLiteBrowse extends LitElement {
     };
   }
 
-  private visibleCards(q: string) {
-    const out: Array<ReturnType<typeof html>> = [];
+  private filtered(q: string) {
+    const out: Array<{ entry: CatalogEntry; names: string[]; installed: boolean }> = [];
     for (const entry of this.entries) {
       if (q && !matchesQuery(entry, q)) continue;
       const cached = this.cache.get(entryKey(entry));
@@ -317,9 +330,15 @@ export class HatsLiteBrowse extends LitElement {
       const names = this.known.of(entry.full_name, [atlasTheme?.name, cached?.name]);
       const installed = isInstalledRepo(entry, names, this.installedSet);
       if (!passesFilter(this.filter, entry, cached, atlasTheme, installed)) continue;
-      out.push(renderCard(this.cardModel(entry, names, installed), () => this.selectTheme(entry)));
+      out.push({ entry, names, installed });
     }
     return out;
+  }
+
+  private visibleCards(q: string) {
+    return this.filtered(q).map(({ entry, names, installed }) =>
+      renderCard(this.cardModel(entry, names, installed), () => this.selectTheme(entry)),
+    );
   }
 
   private emptyText(count: number, q: string): string {

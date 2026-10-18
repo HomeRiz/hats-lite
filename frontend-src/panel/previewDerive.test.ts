@@ -56,3 +56,79 @@ describe("paneVars derived tokens", () => {
     expect(BASELINE.light["primary-background-color"]).toBe("#fafafa");
   });
 });
+
+function refs(value: string): string[] {
+  return [...value.matchAll(/var\(--([A-Za-z0-9_-]+)\)/g)].map((m) => m[1]);
+}
+
+function settle(out: Record<string, string>, key: string): string {
+  let value = out[key];
+  for (let i = 0; i < 5; i += 1) {
+    const m = /^var\(--([A-Za-z0-9_-]+)\)$/.exec(value);
+    if (!m) return value;
+    value = out[m[1]];
+  }
+  return value;
+}
+
+describe("mode dependent root tokens", () => {
+  const MODE_TOKENS = [
+    "markdown-code-background-color",
+    "table-row-background-color",
+    "table-row-alternative-background-color",
+    "table-header-background-color",
+    "data-table-background-color",
+    "mdc-text-field-fill-color",
+    "mdc-text-field-ink-color",
+    "mdc-text-field-label-ink-color",
+    "input-ink-color",
+    "input-label-ink-color",
+    "chip-background-color",
+    "label-badge-background-color",
+    "label-badge-text-color",
+    "state-inactive-color",
+    "ha-color-text-primary",
+    "ha-color-text-secondary",
+  ];
+
+  it("declares every mode dependent token on the pane", () => {
+    const out = paneVars({}, "dark", []);
+    for (const key of MODE_TOKENS) expect(out).toHaveProperty(key);
+  });
+
+  it("only references tokens the pane itself declares", () => {
+    for (const mode of ["dark", "light"] as const) {
+      const out = paneVars({}, mode, []);
+      for (const value of Object.values(DERIVED_TOKENS)) {
+        for (const ref of refs(value)) expect(out, ref).toHaveProperty(ref);
+      }
+    }
+  });
+
+  it("gives a dark pane dark code, table and text field values", () => {
+    const out = paneVars({}, "dark", []);
+    expect(settle(out, "markdown-code-background-color")).toBe(BASELINE.dark["primary-background-color"]);
+    expect(settle(out, "table-row-background-color")).toBe(BASELINE.dark["primary-background-color"]);
+    expect(settle(out, "table-row-alternative-background-color")).toBe(BASELINE.dark["secondary-background-color"]);
+    expect(settle(out, "table-header-background-color")).toBe(BASELINE.dark["secondary-background-color"]);
+    expect(settle(out, "data-table-background-color")).toBe(BASELINE.dark["card-background-color"]);
+    expect(settle(out, "mdc-text-field-ink-color")).toBe(BASELINE.dark["primary-text-color"]);
+    expect(settle(out, "mdc-text-field-label-ink-color")).toBe(BASELINE.dark["secondary-text-color"]);
+    expect(refs(settle(out, "mdc-text-field-fill-color"))).toContain("card-background-color");
+    expect(settle(out, "state-inactive-color")).toBe(BASELINE.dark["disabled-text-color"]);
+  });
+
+  it("follows the pane theme tokens", () => {
+    const out = paneVars({ "primary-background-color": "#000010" }, "light", ["primary-background-color"]);
+    expect(settle(out, "markdown-code-background-color")).toBe("#000010");
+  });
+
+  it("lets a theme defined value win over the derived default", () => {
+    const theme = { "markdown-code-background-color": "#123456", "mdc-text-field-fill-color": "#654321" };
+    const out = paneVars(theme, "dark", Object.keys(theme));
+    expect(out["markdown-code-background-color"]).toBe("#123456");
+    expect(out["mdc-text-field-fill-color"]).toBe("#654321");
+    const viaInput = paneVars({ "input-ink-color": "#abcdef" }, "dark", ["input-ink-color"]);
+    expect(settle(viaInput, "mdc-text-field-ink-color")).toBe("#abcdef");
+  });
+});

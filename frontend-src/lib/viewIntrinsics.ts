@@ -7,6 +7,7 @@ export const ownDescriptor = Reflect.getOwnPropertyDescriptor;
 export const protoOf = Reflect.getPrototypeOf;
 export const setProto = Object.setPrototypeOf;
 export const freeze = Object.freeze;
+export const defineOwn = Reflect.defineProperty;
 export const isArray = Array.isArray;
 export const trunc = Math.trunc;
 

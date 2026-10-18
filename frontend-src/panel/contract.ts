@@ -39,6 +39,7 @@ export type Density = "normal" | "compact";
 
 export type PreviewCandidate = {
   name: string;
+  fullName?: string;
   vars: Record<string, string>;
   entry?: ThemeEntry;
   installed: boolean;

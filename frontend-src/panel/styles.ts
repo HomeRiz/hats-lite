@@ -26,6 +26,9 @@ export const shellStyles = [
     min-width: 0;
   }
   .header {
+    --hl-text: var(--hl-page-text);
+    --hl-muted: var(--hl-page-muted);
+    color: var(--hl-page-text);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -81,11 +84,12 @@ export const shellStyles = [
   .tabs button[aria-selected="true"] {
     background: var(--hl-accent);
     color: var(--hl-accent-ink);
+    box-shadow: inset 0 0 0 1px var(--hl-focus);
   }
   .menu:focus-visible,
   .tabs button:focus-visible,
   .file-theme select:focus-visible {
-    outline: 2px solid var(--hl-accent);
+    outline: 2px solid var(--hl-focus);
     outline-offset: 2px;
   }
   .content {
@@ -103,6 +107,12 @@ export const shellStyles = [
     gap: 8px;
     padding: 0 0 12px;
     font-size: 14px;
+  }
+  .file-theme .file-status {
+    color: var(--hl-muted);
+  }
+  .file-theme .file-status.error {
+    color: var(--error-color, #db4437);
   }
   .file-theme select {
     padding: 6px 10px;

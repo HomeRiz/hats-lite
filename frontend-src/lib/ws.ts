@@ -3,7 +3,9 @@ export interface HassConnection {
   subscribeMessage(
     callback: (event: never) => void,
     msg: Record<string, unknown>,
-  ): Promise<() => void>;
+  ): Promise<() => unknown>;
+  addEventListener?(type: string, listener: () => void): void;
+  removeEventListener?(type: string, listener: () => void): void;
 }
 
 export interface Hass {
@@ -18,6 +20,6 @@ export function subscribe<T>(
   hass: Hass,
   msg: Record<string, unknown>,
   cb: (event: T) => void,
-): Promise<() => void> {
+): Promise<() => unknown> {
   return hass.connection.subscribeMessage(cb as (event: never) => void, msg);
 }

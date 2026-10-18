@@ -1,4 +1,11 @@
 export const stringsDesigner = {
+  baseLabel: "Start from",
+  baseDefault: "Default",
+  baseTooLarge:
+    "This theme has too many variables (300 at most, counting the base plus the Designer keys). Pick another base.",
+  baseMissing: "The base theme is no longer installed. The Designer went back to Default.",
+  baseSkipped: "{count} variables of the base theme were left out because they cannot be saved safely.",
+  valueRejected: "Some values were rejected as unsafe. Pick another base or change the values.",
   colors: "Colors",
   glance: "At a glance",
   onDashboard: "On your dashboard",

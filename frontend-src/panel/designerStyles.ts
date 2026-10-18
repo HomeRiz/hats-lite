@@ -131,7 +131,7 @@ export const designerStyles = [
     border-color: var(--hl-accent);
   }
   .drop:focus-visible {
-    outline: 2px solid var(--hl-accent);
+    outline: 2px solid var(--hl-focus);
     outline-offset: 2px;
   }
   .drop[disabled] {
@@ -180,6 +180,23 @@ export const designerStyles = [
     background: var(--hl-bg);
     color: var(--hl-text);
     font: inherit;
+  }
+  .base {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-weight: 600;
+  }
+  .base select {
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 12px;
+    border-radius: var(--hl-radius-md);
+    border: 1px solid var(--hl-line);
+    background: var(--hl-bg);
+    color: var(--hl-text);
+    font: inherit;
+    font-weight: 400;
   }
   .bar .message {
     flex-basis: 100%;

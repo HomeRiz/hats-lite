@@ -61,13 +61,13 @@ export const browseStyles = css`
     padding: 8px 14px;
     min-height: 40px;
     border-radius: var(--hl-radius-md);
-    border: 1px solid var(--hl-line);
+    border: 1px solid var(--hl-edge);
     background: var(--hl-surface);
     color: var(--hl-text);
     font: inherit;
   }
   .search:focus-visible {
-    outline: 2px solid var(--hl-accent);
+    outline: 2px solid var(--hl-focus);
     outline-offset: 2px;
   }
   .grid {
@@ -110,7 +110,7 @@ export const browseStyles = css`
     background-color: var(--hl-surface-raised);
   }
   .thumb-btn:focus-visible {
-    outline: 2px solid var(--hl-accent);
+    outline: 2px solid var(--hl-focus);
     outline-offset: -2px;
   }
   .thumb-btn:disabled {
