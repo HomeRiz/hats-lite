@@ -38,7 +38,7 @@ def test_manifest_has_the_keys_hacs_and_hassfest_need():
 
 WORKFLOWS = ROOT / ".github" / "workflows"
 HACS_SHA = "d556e736723344f83838d08488c983a15381059a"
-HASSFEST_SHA = "06749dd8c0b54f350bc69c8752456cee498808a3"
+HASSFEST_SHA = "50baf3a307f87100cf550d4ae127746595030d5d"
 
 
 def workflow(name):
@@ -57,7 +57,7 @@ def test_workflows_have_no_comments_and_read_only_defaults():
         assert data["permissions"] == {"contents": "read"}, name
         for job_name, job in data["jobs"].items():
             assert isinstance(job.get("timeout-minutes"), int), (name, job_name)
-            assert job["runs-on"] == "ubuntu-24.04"
+            assert job["runs-on"] == "ubuntu-26.04"
 
 
 def test_validate_actions_are_pinned_to_full_shas():
