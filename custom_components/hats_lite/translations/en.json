@@ -10,5 +10,114 @@
     "abort": {
       "single_instance_allowed": "HATS Lite is already set up. Only one instance is allowed."
     }
+  },
+  "services": {
+    "apply_theme": {
+      "name": "Apply theme",
+      "description": "Applies a theme for a user. The change is made through a short lived manual assignment that the target's open session applies live, ending after 24 hours unless a duration is given. The user's own later choice takes over again. Without a user, the calling user is the target.",
+      "fields": {
+        "theme": {
+          "name": "Theme",
+          "description": "Name of an installed theme, or default."
+        },
+        "mode": {
+          "name": "Mode",
+          "description": "Light or dark variant. Auto keeps the choice of the theme."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "Seconds the theme stays in place, from 60 to 2592000."
+        },
+        "user": {
+          "name": "User",
+          "description": "User id or user name. Defaults to the calling user."
+        }
+      }
+    },
+    "assign_theme": {
+      "name": "Assign theme",
+      "description": "Assigns a theme to a user as a manual assignment that lasts until removed, or for the given duration. Admins may assign to anyone, assigners to non admin users, other users only to themselves. A theme a user assigns to themselves always ends (24 hours by default) and replaces their previous self assigned theme. Users who opted out of assigned themes are refused.",
+      "fields": {
+        "theme": {
+          "name": "Theme",
+          "description": "Name of an installed theme, or default."
+        },
+        "mode": {
+          "name": "Mode",
+          "description": "Light or dark variant. Auto keeps the choice of the theme."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "Seconds the theme stays in place, from 60 to 2592000."
+        },
+        "user": {
+          "name": "User",
+          "description": "User id or user name of the target."
+        }
+      }
+    },
+    "revert_now": {
+      "name": "Revert now",
+      "description": "Cancels the running safe try for a user, or ends the theme the user applied to themselves, so the user's own choice shows again. Themes assigned by others are never touched. Without a user, the calling user is the target. Returns what was reverted: trial, override or none.",
+      "fields": {
+        "user": {
+          "name": "User",
+          "description": "User id or user name. Defaults to the calling user. Only admins and assigners may name another user."
+        }
+      }
+    }
+  },
+  "selector": {
+    "mode": {
+      "options": {
+        "auto": "Auto",
+        "dark": "Dark",
+        "light": "Light"
+      }
+    }
+  },
+  "exceptions": {
+    "unauthorized": {
+      "message": "You are not allowed to change the theme of this user."
+    },
+    "invalid_user": {
+      "message": "No active user matches the given user."
+    },
+    "opted_out": {
+      "message": "This user opted out of assigned themes."
+    },
+    "unknown_theme": {
+      "message": "This theme is not installed."
+    },
+    "theme_unavailable": {
+      "message": "This theme is being removed."
+    },
+    "invalid_range": {
+      "message": "The duration is out of range."
+    },
+    "limit_reached": {
+      "message": "The limit of assignments for this user is reached."
+    },
+    "invalid_request": {
+      "message": "The request is not valid."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "HATS Lite options",
+        "data": {
+          "allow_automation_assign": "Allow automations to assign themes",
+          "advanced_path": "Path of the HATS app panel (optional)"
+        },
+        "data_description": {
+          "allow_automation_assign": "When on, service calls without a user (automations, scripts) act as an administrator.",
+          "advanced_path": "Same-origin path starting with /, for example /a0d7b954_hats. Leave empty to detect it."
+        }
+      }
+    },
+    "error": {
+      "invalid_advanced_path": "Use a path that starts with a single /, with no spaces, no # and no ?, and at most 200 characters."
+    }
   }
 }

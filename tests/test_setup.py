@@ -1,3 +1,4 @@
+import re
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.hats_lite import api
@@ -19,8 +20,8 @@ async def test_setup_registers_panel_applier_and_static_path(hass):
     assert panel.sidebar_icon == "mdi:palette"
     assert panel.require_admin is False
     assert panel.config["_panel_custom"]["name"] == "hats-lite-panel"
-    assert panel.config["_panel_custom"]["module_url"] == STATIC_URL + "/hats-lite-panel.js"
-    assert STATIC_URL + "/hats-lite-applier.js" in hass.data["frontend_extra_module_url"].urls
+    assert re.fullmatch(STATIC_URL + r"/hats-lite-panel\.js\?v=[0-9a-f]{12}", panel.config["_panel_custom"]["module_url"])
+    assert any(re.fullmatch(STATIC_URL + r"/hats-lite-applier\.js\?v=[0-9a-f]{12}", url) for url in hass.data["frontend_extra_module_url"].urls)
     paths = [r.canonical for r in hass.http.app.router.resources()]
     assert STATIC_URL in paths
     assert "/api/hats_lite/background" in paths

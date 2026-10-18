@@ -29,7 +29,7 @@ def clock(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def theme_catalog():
-    entries = [{"full_name": "a/b", "description": "", "stars": 1, "installed": False, "last_commit": None, "hacs_id": None}]
+    entries = [{"full_name": "a/b", "description": "", "stars": 1, "installed": False, "last_commit": "abcd1234", "hacs_id": None}]
     with patch.object(theme_api, "load_catalog_for_hass", AsyncMock(return_value=(entries, "public"))):
         yield
 
@@ -54,6 +54,13 @@ async def setup(hass, clock, tmp_path):
 async def _call(client, msg_id, type_, **fields):
     await client.send_json({"id": msg_id, "type": f"hats_lite/{type_}", **fields})
     return await client.receive_json()
+
+
+async def _next_revert(client):
+    while True:
+        msg = await client.receive_json()
+        if msg.get("event", {}).get("type") == "revert":
+            return msg
 
 
 async def test_catalog_returns_entries_and_source(hass, setup, hass_ws_client):
@@ -168,7 +175,7 @@ async def test_watchdog_reverts_after_confirm_window(hass, setup, hass_ws_client
     clock["t"] = 1040.0
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=40))
     await hass.async_block_till_done()
-    msg = await client.receive_json()
+    msg = await _next_revert(client)
     assert msg["id"] == 1
     assert msg["type"] == "event"
     assert msg["event"] == {"type": "revert", "selection": {"theme": "a"}, "started_at": started_at}
@@ -187,7 +194,7 @@ async def test_restore_broadcasts_the_trial_started_at(hass, setup, hass_ws_clie
     clock["t"] = 1040.0
     await api.async_restore_watchdogs(hass)
     await hass.async_block_till_done()
-    msg = await client.receive_json()
+    msg = await _next_revert(client)
     assert msg["event"] == {"type": "revert", "selection": {"theme": "a"}, "started_at": started_at}
 
 
@@ -281,7 +288,7 @@ async def test_second_trial_keeps_the_original_previous(hass, setup, hass_ws_cli
     clock["t"] = 1040.0
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=40))
     await hass.async_block_till_done()
-    msg = await client.receive_json()
+    msg = await _next_revert(client)
     assert msg["event"] == {"type": "revert", "selection": {"theme": "A"}, "started_at": started_at}
 
 

@@ -10,9 +10,16 @@ from homeassistant.components import websocket_api
 from homeassistant.components.frontend import DATA_THEMES
 from homeassistant.core import HomeAssistant, callback
 
+from . import scheduler
+from .api_advanced import async_register_advanced_commands
+from .api_calendar import async_register_calendar_commands
+from .api_install import ws_install_theme, ws_uninstall_theme
+from .api_mods import async_register_mods_commands
+from .api_people import async_register_people_commands
 from .catalog import CatalogError, load_catalog
 from .const import DOMAIN, UPLOAD_DIR_NAME
 from .outcome_api import ws_outcome_ack
+from .removal import THEME_UNAVAILABLE, UNAVAILABLE_TEXT, is_removing
 from .selection import MAX_NAME, valid_selection
 from .sources import hacs_loader, public_loader
 from .theme_api import ws_theme
@@ -166,6 +173,7 @@ async def _watchdog_fire(hass, user_id):
         return
     if await data["store"].async_end_trial(user_id, trial.started_at, "reverted", _now()):
         _broadcast(hass, user_id, trial.previous, trial.started_at)
+        scheduler.async_reschedule(hass, user_id)
 
 
 async def async_start_user_trial(hass, user_id, previous, candidate):
@@ -176,6 +184,7 @@ async def async_start_user_trial(hass, user_id, previous, candidate):
     trial = start_trial(user_id, previous, candidate, _now())
     await store.async_set_trial(trial)
     schedule_watchdog(hass, trial)
+    scheduler.async_reschedule(hass, user_id)
     return trial
 
 
@@ -215,6 +224,9 @@ async def ws_trial_start(hass, connection, msg):
         return
     if not valid_selection(msg["previous"]) or not valid_selection(msg["candidate"]):
         connection.send_error(msg["id"], "invalid_selection", "Invalid theme selection")
+        return
+    if is_removing(hass, msg["candidate"].get("theme")):
+        connection.send_error(msg["id"], THEME_UNAVAILABLE, UNAVAILABLE_TEXT)
         return
     trial = await async_start_user_trial(hass, connection.user.id, msg["previous"], msg["candidate"])
     connection.send_result(msg["id"], {"trial": trial_to_dict(trial)})
@@ -262,6 +274,7 @@ async def ws_trial_accept(hass, connection, msg):
         return
     cancel_watchdog(hass, trial.user_id)
     await store.async_end_trial(trial.user_id, trial.started_at, "accepted", _now())
+    scheduler.async_reschedule(hass, trial.user_id)
     connection.send_result(msg["id"], {"accepted": True})
 
 
@@ -278,6 +291,7 @@ async def ws_trial_cancel(hass, connection, msg):
         return
     cancel_watchdog(hass, trial.user_id)
     await store.async_end_trial(trial.user_id, trial.started_at, "cancelled", _now())
+    scheduler.async_reschedule(hass, trial.user_id)
     connection.send_result(msg["id"], {"revert": trial.previous})
 
 
@@ -335,8 +349,8 @@ async def ws_save_theme(hass, connection, msg):
     own = file_name in files
     existed, defined = await hass.async_add_executor_job(inspect_target, directory, file_name)
     installed = {key.casefold() for key in hass.data.get(DATA_THEMES) or {}}
-    foreign_name = any(item.casefold() != name.casefold() for item in defined)
-    defined_here = any(item.casefold() == name.casefold() for item in defined)
+    foreign_name = defined is None or any(item.casefold() != name.casefold() for item in defined)
+    defined_here = defined is not None and any(item.casefold() == name.casefold() for item in defined)
     unscanned = getattr(files, "overflow", False) and not own and not defined_here
     if (
         any(item != file_name for item in files)
@@ -369,6 +383,8 @@ COMMANDS = (
     ws_trial_cancel,
     ws_subscribe,
     ws_save_theme,
+    ws_install_theme,
+    ws_uninstall_theme,
     ws_outcome_ack,
 )
 
@@ -377,3 +393,7 @@ def async_register_commands(hass: HomeAssistant):
     record_www_state(hass)
     for command in COMMANDS:
         websocket_api.async_register_command(hass, command)
+    async_register_people_commands(hass)
+    async_register_mods_commands(hass)
+    async_register_advanced_commands(hass)
+    async_register_calendar_commands(hass)
