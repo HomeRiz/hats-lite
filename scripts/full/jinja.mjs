@@ -104,8 +104,14 @@ export function startJinja(python, script, options = {}) {
     state.poll = setInterval(async () => {
       if (state.polling || state.dead || !child.pid) return;
       state.polling = true;
-      const kb = await probe(child.pid);
-      state.polling = false;
+      let kb;
+      try {
+        kb = await probe(child.pid);
+      } catch {
+        kb = null;
+      } finally {
+        state.polling = false;
+      }
       if (state.dead) return;
       state.misses = kb === null ? state.misses + 1 : 0;
       if (state.misses >= PS_FAILURES) {

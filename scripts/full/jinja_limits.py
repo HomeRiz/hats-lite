@@ -1,110 +1,39 @@
-import re
 import types
-from collections.abc import ItemsView, KeysView, ValuesView
 from functools import update_wrapper
 
 from jinja2.compiler import CodeGenerator, optimizeconst
-from jinja2.exceptions import SecurityError
 from jinja2.runtime import markup_join, str_join
 from jinja2.sandbox import SandboxedEscapeFormatter, SandboxedFormatter
 from markupsafe import Markup
 
-MAX_ARG = 10000
-MAX_RESULT = 262144
-MAX_PRODUCED = 2097152
-MAX_DIGITS = 5
-DIGITS = re.compile(r"\d+")
-PRINTF = re.compile(r"%(?:\([^)]*\))?[-#0 +]*(\*|\d*)(?:\.(\*|\d*))?")
-TEXT = (str, bytes)
-SEQUENCES = (list, tuple, set, frozenset, KeysView, ValuesView, ItemsView)
+from jinja_sizes import (
+    MAX_PRODUCED,
+    MAX_RESULT,
+    SEQUENCES,
+    TEXT,
+    as_text,
+    check_ints,
+    escape_bound,
+    estimate,
+    is_int,
+    line_count,
+    pick,
+    printed,
+    printf_bound,
+    refuse,
+    replace_bound,
+    spec_width,
+)
+
+CONTAINERS = (list, tuple, set, frozenset, dict)
 REMOVED_FILTERS = ("urlize", "pprint")
-
-
-def refuse(message="result is too large"):
-    raise SecurityError(message)
-
-
-def is_int(value):
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
-def check_ints(values):
-    for value in values:
-        if is_int(value) and abs(value) > MAX_ARG:
-            refuse("argument is too large")
-
-
-def estimate(value, budget=MAX_PRODUCED):
-    total = 0
-    stack = [value]
-    while stack and total <= budget:
-        item = stack.pop()
-        if isinstance(item, TEXT):
-            total += len(item) + 2
-        elif isinstance(item, dict):
-            total += 2 + 4 * len(item)
-            if total <= budget:
-                stack.extend(item.keys())
-                stack.extend(item.values())
-        elif isinstance(item, SEQUENCES):
-            total += 16 + 2 * len(item)
-            if total <= budget:
-                stack.extend(item)
-        elif is_int(item):
-            total += item.bit_length() // 3 + 2
-        else:
-            total += 32
-    return total
-
-
-def as_text(value):
-    if isinstance(value, TEXT):
-        return value
-    if estimate(value) > MAX_RESULT:
-        refuse()
-    return str(value)
-
-
-def spec_width(spec):
-    total = 0
-    for run in DIGITS.findall(spec):
-        if len(run) >= MAX_DIGITS:
-            refuse("format width is too large")
-        total += int(run)
-    return total
-
-
-def printf_bound(fmt, values):
-    text = fmt if isinstance(fmt, str) else fmt.decode("latin-1")
-    stars = 0
-    total = len(text)
-    for match in PRINTF.finditer(text):
-        for group in match.groups():
-            if group == "*":
-                stars += 1
-            elif group:
-                total += spec_width(group)
-    if isinstance(values, dict):
-        items = tuple(values.values())
-    elif isinstance(values, tuple):
-        items = values
-    else:
-        items = (values,)
-    if stars:
-        check_ints(items)
-        total += sum(abs(v) for v in items if is_int(v))
-    return total + estimate(values)
-
-
-def replace_bound(s, old, new, count=None):
-    hits = s.count(old) if len(old) else len(s) + 1
-    if is_int(count) and count >= 0:
-        hits = min(hits, count)
-    return len(s) + hits * max(len(new) - len(old), 0)
-
-
-def pick(args, kwargs, index, name, default=None):
-    return args[index] if len(args) > index else kwargs.get(name, default)
+BUILDERS = ("list", "sort", "dictsort", "groupby")
+ITEM = 8
+CASE = ("upper", "lower", "title", "capitalize", "swapcase", "casefold")
+CODECS = ("utf-8", "utf8", "ascii", "latin-1")
+NO_TEXT = ("startswith", "endswith", "count", "find", "rfind", "index", "rindex")
+NAMED = 92
+MARKUP = 5
 
 
 class Meter:
@@ -117,9 +46,54 @@ class Meter:
     def spend(self, size):
         if size > MAX_RESULT:
             refuse()
+        self.add(size)
+
+    def add(self, size):
         self.used += size
         if self.used > MAX_PRODUCED:
             refuse("template produced too much text")
+
+    def items(self, count):
+        self.add(ITEM * max(count, 0))
+
+    def built(self, value):
+        if isinstance(value, CONTAINERS):
+            self.items(len(value))
+        return value
+
+
+def growth(owner, name, args, kwargs):
+    if name.startswith("is") or name in NO_TEXT:
+        return 0
+    plain = isinstance(owner, bytes) or owner.isascii()
+    if name in CASE:
+        return 1 if plain else 3
+    if name in ("encode", "decode"):
+        codec = pick(args, kwargs, 0, "encoding", "utf-8")
+        simple = len(args) <= 1 and set(kwargs) <= {"encoding"} and isinstance(codec, str) and codec.lower() in CODECS
+        if pick(args, kwargs, 1, "errors") == "namereplace":
+            return NAMED
+        return (1 if plain else 4) if simple else 10
+    return 3 if name == "hex" else 1
+
+
+def class_bound(name, args, kwargs):
+    if name == "escape":
+        return escape_bound(pick(args, kwargs, 0, "s", ""))
+    return estimate((args, tuple(kwargs.values())))
+
+
+def meter_call(meter, obj, args, kwargs):
+    owner = getattr(obj, "__self__", None)
+    name = getattr(obj, "__name__", "")
+    if isinstance(owner, TEXT):
+        size, args = method_bound(owner, name, args, kwargs)
+        meter.spend(size)
+    elif isinstance(owner, type) and issubclass(owner, TEXT):
+        meter.spend(class_bound(name, args, kwargs))
+    elif isinstance(owner, CONTAINERS) and name == "copy":
+        meter.items(len(owner))
+    return args
 
 
 def method_bound(owner, name, args, kwargs):
@@ -132,22 +106,25 @@ def method_bound(owner, name, args, kwargs):
     if name == "expandtabs":
         tab = pick(args, kwargs, 0, "tabsize", 8)
         return size + owner.count("\t" if isinstance(owner, str) else b"\t") * max(tab if is_int(tab) else 0, 0), args
+    markup = isinstance(owner, Markup)
     if name == "replace" and len(args) >= 2:
-        return replace_bound(owner, args[0], args[1], pick(args, kwargs, 2, "count", -1)), args
+        wide = escape_bound(args[1]) if markup else None
+        return replace_bound(owner, args[0], args[1], pick(args, kwargs, 2, "count", -1), wide), args
     if name == "join" and args:
         items = list(args[0])
-        return estimate(items) + size * len(items), (items, *args[1:])
+        parts = sum(escape_bound(item) for item in items) if markup else estimate(items)
+        return parts + size * len(items), (items, *args[1:])
     if name == "translate" and args:
         table = args[0]
         values = table.values() if isinstance(table, dict) else table if isinstance(table, (list, tuple)) else ()
         widest = max((len(v) for v in values if isinstance(v, TEXT)), default=1)
         return size * max(widest, 1), args
-    return 0, args
+    return size * growth(owner, name, args, kwargs), args
 
 
 def _format(value, args, kwargs):
-    fmt = value if isinstance(value, str) else ""
-    return printf_bound(fmt, kwargs or tuple(args)) + estimate(value), value
+    fmt = as_text(value)
+    return printf_bound(fmt, kwargs or tuple(args)) + len(fmt), value
 
 
 def _replace(value, args, kwargs):
@@ -157,31 +134,66 @@ def _replace(value, args, kwargs):
 
 def _join(value, args, kwargs):
     items = list(value)
-    return estimate(items) + len(as_text(pick(args, kwargs, 0, "d", ""))) * len(items), items
+    return sum(printed(item) for item in items) + len(as_text(pick(args, kwargs, 0, "d", ""))) * len(items), items
 
 
 def _center(value, args, kwargs):
     width = pick(args, kwargs, 0, "width", 80)
-    return max(estimate(value), width if is_int(width) else 0), value
+    return max(printed(value), width if is_int(width) else 0), value
 
 
 def _indent(value, args, kwargs):
     s = as_text(value)
     width = pick(args, kwargs, 0, "width", 4)
     step = len(width) if isinstance(width, TEXT) else width if is_int(width) else 0
-    return len(s) + (s.count("\n") + 1) * step, value
+    return len(s) + (line_count(s) + 1) * (step + 1), value
 
 
 def _wordwrap(value, args, kwargs):
     s = as_text(value)
     width = pick(args, kwargs, 0, "width", 79)
     wrap = pick(args, kwargs, 2, "wrapstring") or "\n"
-    lines = len(s) // max(width if is_int(width) else 1, 1) + s.count(" ") + s.count("\n") + 1
-    return len(s) + lines * len(as_text(wrap)), value
+    wraps = 2 * len(s) // max(width if is_int(width) else 1, 1) + 2 * line_count(s)
+    return len(s) + wraps * len(as_text(wrap)), value
+
+
+def indent_lines(value, budget):
+    total = 0
+    stack = [(value, 1)]
+    while stack and total <= budget:
+        item, depth = stack.pop()
+        total += depth
+        if isinstance(item, dict):
+            total += depth
+            stack.extend((child, depth + 1) for child in item.values())
+        elif isinstance(item, SEQUENCES):
+            total += depth
+            stack.extend((child, depth + 1) for child in item)
+    return total
+
+
+def _tojson(value, args, kwargs):
+    indent = pick(args, kwargs, 0, "indent")
+    step = len(indent) if isinstance(indent, TEXT) else max(int(indent), 0) if isinstance(indent, int) else 0
+    lines = indent_lines(value, MAX_PRODUCED // (step + 1)) if indent is not None else 0
+    return 12 * estimate(value) + lines * (step + 1), value
 
 
 def _scaled(factor):
-    return lambda value, args, kwargs: (factor * estimate(value), value)
+    return lambda value, args, kwargs: (factor * printed(value), value)
+
+
+def _case(value, args, kwargs):
+    plain = isinstance(value, str) and value.isascii()
+    return printed(value) * (1 if plain else 3), value
+
+
+def _escape(value, args, kwargs):
+    return escape_bound(value), value
+
+
+def _sum(value, args, kwargs):
+    return estimate(value) + estimate(pick(args, kwargs, 1, "start", 0)), value
 
 
 FILTER_BOUNDS = {
@@ -191,13 +203,16 @@ FILTER_BOUNDS = {
     "center": _center,
     "indent": _indent,
     "wordwrap": _wordwrap,
+    "tojson": _tojson,
     "batch": _scaled(0),
     "slice": _scaled(0),
     "truncate": _scaled(1),
-    "sum": _scaled(1),
-    **{name: _scaled(1) for name in ("string", "trim", "upper", "lower", "title", "capitalize", "striptags", "safe")},
-    **{name: _scaled(6) for name in ("e", "escape", "forceescape", "tojson", "xmlattr")},
-    "urlencode": _scaled(9),
+    "sum": _sum,
+    **{name: _scaled(1) for name in ("string", "trim", "striptags", "safe")},
+    **{name: _case for name in ("upper", "lower", "title", "capitalize")},
+    **{name: _escape for name in ("e", "escape", "forceescape")},
+    "xmlattr": _scaled(MARKUP),
+    "urlencode": _scaled(12),
 }
 
 
@@ -215,22 +230,34 @@ def guard_filter(base, meter, bound):
     return update_wrapper(wrapper, base)
 
 
+def built_filter(base, meter):
+    def wrapper(*args, **kwargs):
+        return meter.built(base(*args, **kwargs))
+
+    return update_wrapper(wrapper, base)
+
+
 def install_filters(env):
     for name in REMOVED_FILTERS:
         env.filters.pop(name, None)
     for name, bound in FILTER_BOUNDS.items():
         if name in env.filters:
             env.filters[name] = guard_filter(env.filters[name], env.meter, bound)
+    for name in BUILDERS:
+        if name in env.filters:
+            env.filters[name] = built_filter(env.filters[name], env.meter)
 
 
 class WorkerFormatter(SandboxedFormatter):
+    factor = 1
+
     def format_field(self, value, format_spec):
-        self._env.meter.spend(estimate(value) + spec_width(format_spec))
+        self._env.meter.spend(self.factor * (printed(value) + spec_width(format_spec)))
         return super().format_field(value, format_spec)
 
 
 class WorkerEscapeFormatter(WorkerFormatter, SandboxedEscapeFormatter):
-    pass
+    factor = MARKUP
 
 
 def wrap_format(env, value):
@@ -253,7 +280,7 @@ def wrap_format(env, value):
 
 
 def checked_concat(meter, eval_ctx, values):
-    meter.spend(estimate(values))
+    meter.spend(sum(printed(value) for value in values))
     return markup_join(values) if eval_ctx.autoescape else str_join(values)
 
 

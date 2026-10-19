@@ -136,6 +136,34 @@ def test_long_running_loops_are_stopped(tmp_path):
     assert time.monotonic() - started < 20
 
 
+SLOW_FOLD = """
+import signal, sys, time
+sys.path.insert(0, sys.argv[1])
+import jinja_worker as w
+def slow(value):
+    end = time.monotonic() + 2.5
+    while time.monotonic() < end:
+        pass
+    return value
+signal.signal(signal.SIGALRM, w._timeout)
+env = w.make_env([])
+env.filters["slow"] = slow
+loop = "{% for i in range(10000) %}{% for j in range(10000) %}{% for k in range(10000) %}{% endfor %}{% endfor %}{% endfor %}"
+try:
+    w.render(env, "{{ 1 | slow }}" + loop, {})
+    print("rendered")
+except BaseException as e:
+    print(type(e).__name__, e)
+"""
+
+
+def test_timeout_survives_constant_folding_and_still_stops_the_render(tmp_path):
+    started = time.monotonic()
+    proc = subprocess.run([sys.executable, "-I", "-c", SLOW_FOLD, str(FULL)], capture_output=True, text=True, timeout=30, cwd=tmp_path)
+    assert proc.stdout.strip() == "RenderTimeout template took too long", proc.stderr
+    assert time.monotonic() - started < 10
+
+
 def test_output_and_template_size_are_capped(tmp_path):
     big = one(tmp_path, "{% for i in range(1000) %}{{ 'x' * 1000 }}{% endfor %}")
     assert "error" in big and "result" not in big

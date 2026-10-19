@@ -1,4 +1,5 @@
 import datetime
+import gc
 import json
 import os
 import signal
@@ -52,7 +53,7 @@ class WorkerEnvironment(ImmutableSandboxedEnvironment):
         return "".join(parts)
 
     def metered(self, value):
-        self.meter.spend(limits.estimate(value))
+        self.meter.spend(limits.printed(value))
         return value
 
     def checked_concat(self, eval_ctx, values):
@@ -62,10 +63,7 @@ class WorkerEnvironment(ImmutableSandboxedEnvironment):
         return limits.wrap_format(self, value)
 
     def call(__self, __context, __obj, *args, **kwargs):
-        owner = getattr(__obj, "__self__", None)
-        if isinstance(owner, limits.TEXT):
-            size, args = limits.method_bound(owner, getattr(__obj, "__name__", ""), args, kwargs)
-            __self.meter.spend(size)
+        args = limits.meter_call(__self.meter, __obj, args, kwargs)
         return super().call(__context, __obj, *args, **kwargs)
 
     def call_binop(self, context, operator, left, right):
@@ -81,6 +79,8 @@ class WorkerEnvironment(ImmutableSandboxedEnvironment):
                     raise SecurityError("result is too large")
                 if isinstance(seq, limits.TEXT) and isinstance(count, int):
                     self.meter.spend(len(seq) * max(count, 0))
+                elif isinstance(seq, (list, tuple)) and isinstance(count, int):
+                    self.meter.items(len(seq) * count)
             if _bits(left) + _bits(right) > MAX_INT_BITS:
                 raise SecurityError("result is too large")
         elif operator == "+":
@@ -88,10 +88,14 @@ class WorkerEnvironment(ImmutableSandboxedEnvironment):
                 raise SecurityError("result is too large")
             if max(_bits(left), _bits(right)) > MAX_INT_BITS:
                 raise SecurityError("result is too large")
-            if isinstance(left, limits.TEXT) and isinstance(right, limits.TEXT):
+            if isinstance(left, limits.Markup) or isinstance(right, limits.Markup):
+                self.meter.spend(limits.escape_bound(left) + limits.escape_bound(right))
+            elif isinstance(left, limits.TEXT) and isinstance(right, limits.TEXT):
                 self.meter.spend(len(left) + len(right))
+            elif isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
+                self.meter.items(len(left) + len(right))
         elif operator == "%" and isinstance(left, limits.TEXT):
-            self.meter.spend(limits.printf_bound(left, right))
+            self.meter.spend(limits.printf_bound(left, right) * (limits.MARKUP if isinstance(left, limits.Markup) else 1))
         return super().call_binop(context, operator, left, right)
 
 
@@ -172,7 +176,7 @@ def make_env(states):
     limits.install_filters(env)
     env.globals.update(
         range=_bounded_range,
-        dict=lambda *a, **k: dict(*a, **k),
+        dict=lambda *a, **k: env.meter.built(dict(*a, **k)),
         states=states_proxy,
         is_state=is_state,
         has_value=has_value,
@@ -211,7 +215,7 @@ def harden():
             pass
 
 
-class RenderTimeout(Exception):
+class RenderTimeout(BaseException):
     pass
 
 
@@ -242,6 +246,7 @@ def render(env, template, variables):
         return "".join(parts)
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
+        gc.collect()
 
 
 def main():
@@ -257,7 +262,7 @@ def main():
         try:
             out = render(env, msg.get("template"), msg.get("variables") or {})
             print(json.dumps({"id": msg["id"], "result": out}), flush=True)
-        except Exception as e:
+        except (Exception, RenderTimeout) as e:
             print(json.dumps({"id": msg["id"], "error": (str(e) or type(e).__name__)[:MAX_ERROR]}), flush=True)
 
 

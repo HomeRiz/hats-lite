@@ -169,3 +169,16 @@ import {{ PS_FAILURES }} from "{JINJA}";
 console.log(JSON.stringify(PS_FAILURES));
 """
     assert run_node(source)[0] == 3
+
+
+def test_a_throwing_rss_probe_counts_as_a_ps_failure_and_stays_fail_closed(tmp_path):
+    script = tmp_path / "fake.py"
+    script.write_text(FAKE)
+    source = drive(script, {"callMs": 20000}, ["ok", "slow", "ok"]).replace(
+        "{ flags: null, ", "{ flags: null, readRss: async () => { throw new Error(\"ps broke\"); }, "
+    )
+    out, stderr = run_node(source)
+    assert out[0]["result"] == "inits=1"
+    assert out[1]["error"] == "memory watchdog is unavailable"
+    assert out[2]["error"] == "memory watchdog is unavailable"
+    assert "ps broke" not in stderr

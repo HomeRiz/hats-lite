@@ -36,6 +36,7 @@ def test_harden_page_bypasses_service_workers_and_disables_sockets_before_page_s
 import {{ hardenPage }} from "{NET}";
 const calls = [];
 const page = {{
+  on: () => {{}},
   setBypassServiceWorker: async (value) => calls.push(["bypass", value]),
   evaluateOnNewDocument: async (fn, names) => {{
     const scope = {{ WebSocket: class {{}}, RTCPeerConnection: class {{}} }};
@@ -61,6 +62,32 @@ console.log(JSON.stringify(calls));
     assert set(calls[1][1]) == {"WebSocket", "WebSocketStream", "RTCPeerConnection", "webkitRTCPeerConnection", "WebTransport", "Worker", "SharedWorker"}
     assert calls[1][2] == "SecurityError"
     assert calls[1][3] == ["SecurityError"] * 3
+
+
+def test_harden_page_closes_popups():
+    source = f"""
+import {{ hardenPage }} from "{NET}";
+const handlers = {{}};
+const page = {{
+  on: (event, handler) => (handlers[event] = handler),
+  setBypassServiceWorker: async () => {{}},
+  evaluateOnNewDocument: async () => {{}},
+}};
+await hardenPage(page);
+let closed = 0;
+handlers.popup({{ close: async () => {{ closed += 1; }} }});
+handlers.popup({{ close: async () => {{ throw new Error("gone"); }} }});
+let threw = false;
+try {{
+  handlers.popup({{ close: () => {{ throw new Error("sync"); }} }});
+}} catch {{
+  threw = true;
+}}
+handlers.popup({{ close: () => {{ closed += 1; }} }});
+await new Promise((resolve) => setTimeout(resolve, 10));
+console.log(JSON.stringify({{ events: Object.keys(handlers), closed, threw }}));
+"""
+    assert run_node(source) == {"events": ["popup"], "closed": 2, "threw": False}
 
 
 def test_guard_rejects_and_records_websocket_urls():

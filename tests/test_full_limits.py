@@ -74,6 +74,8 @@ BYPASSES = [
     "{{ ('a' * 60000).translate({97: 'b' * 60000}) }}",
     "{{ ('a ' * 30000) | wordwrap(1, wrapstring='b' * 60000) }}",
     "{{ '%9999d' * 6000 % ((1,) * 6000) }}",
+    "{{ ('a' * 30000).encode('utf-16') | length }}",
+    "{{ ('a' * 30000).encode('utf-8', 'backslashreplace') | length }}",
     "{{ ('{:9999}' * 6000).format(*([1] * 6000)) }}",
 ]
 
@@ -113,6 +115,9 @@ NORMAL = [
     ("{{ ('ab' ~ 'cd').upper() }}|{{ 'a\\tb'.expandtabs(2) }}", "ABCD|a b"),
     ("{{ '%-6s|' | format('ab') }}{{ '%(n)03d' % {'n': 7} }}", "ab    |007"),
     ("{{ [1, 2] | tojson }}|{{ 'a b c' | wordwrap(3) }}", "[1, 2]|a b\nc"),
+    ("{{ {'b': [1, 2], 'a': 1} | tojson(indent=2) }}", '{\n  "a": 1,\n  "b": [\n    1,\n    2\n  ]\n}'),
+    ("{% set s = 'a' * 30000 %}{{ s.encode('utf-8') | length }}|{{ s.encode('UTF8') | length }}", "30000|30000"),
+    ("{% set s = 'é' * 30000 %}{{ s.encode('utf-8') | length }}|{{ s.encode(encoding='latin-1') | length }}", "60000|30000"),
 ]
 
 
@@ -137,3 +142,53 @@ def test_total_produced_characters_are_capped_per_render(tmp_path):
 def test_views_and_iterators_of_small_dicts_still_render(tmp_path):
     template = "{% set d = {'a': 1, 'b': 2} %}{{ d.keys() | list }}|{{ d.values() | sum }}|{{ d | items | list | length }}|{{ d.items() | string | length > 0 }}"
     assert probe(tmp_path, template)["reply"] == {"id": 1, "result": "['a', 'b']|3|2|True"}
+
+
+
+AMPLIFY = [
+    ("{% set n = %s %}", "[1] * n", "65536", "1"),
+    ("{% set a = [1] * %s %}", "a + a", "32768", "1"),
+    ("{% set s = 'ß' * %s %}", "s.upper()", "65535", "1"),
+    ("{% set m = 'a' | safe %}{% set s = '<' * %s %}", "m.escape(s)", "65535", "1"),
+    ("{% set s = 'é' * %s %}", "s.encode()", "65535", "1"),
+]
+
+
+def amplified(setup, item, count):
+    return setup.replace("%s", count) + "{% set x = [" + ", ".join([item] * 2500) + "] %}{{ x | length }}"
+
+
+@pytest.mark.parametrize("setup,item,big,small", AMPLIFY, ids=[f"amplify{i}" for i in range(len(AMPLIFY))])
+def test_repeated_sequence_and_text_building_is_metered(tmp_path, setup, item, big, small):
+    control = probe(tmp_path, amplified(setup, item, small))
+    assert control["reply"] == {"id": 1, "result": "2500"}
+    result = probe(tmp_path, amplified(setup, item, big))
+    assert "too much text" in result["reply"].get("error", ""), str(result["reply"])[:200]
+    assert result["seconds"] < 1, result["seconds"]
+    assert result["peak_mb"] < control["peak_mb"] + 16, (result["peak_mb"], control["peak_mb"])
+
+
+def indented(size, indent):
+    sets = "".join("{% set v" + str(i) + " = l | tojson(indent=" + indent + ") %}" for i in range(15))
+    return "{% set l = [0] * " + size + " %}" + sets + "{{ 1 }}"
+
+
+def test_tojson_indent_is_metered(tmp_path):
+    control = probe(tmp_path, indented("500", "2"))
+    assert control["reply"] == {"id": 1, "result": "1"}
+    for indent in ("10000", "'" + " " * 10000 + "'"):
+        result = probe(tmp_path, indented("5400", indent))
+        assert "error" in result["reply"], str(result["reply"])[:200]
+        assert result["seconds"] < 1, result["seconds"]
+        assert result["peak_mb"] < control["peak_mb"] + 16, (result["peak_mb"], control["peak_mb"])
+
+
+def test_nested_tojson_indent_is_metered(tmp_path):
+    nest = "{% set l = " + "[" * 50 + "0" + "]" * 50 + " %}"
+    control = probe(tmp_path, nest + "{{ l | tojson(indent=2) | length }}")
+    assert control["reply"] == {"id": 1, "result": "5201"}
+    sets = "{% for i in range(15) %}{% set v = l | tojson(indent=10000) %}{% endfor %}"
+    result = probe(tmp_path, nest + sets + "{{ 1 }}")
+    assert "error" in result["reply"], str(result["reply"])[:200]
+    assert result["seconds"] < 1, result["seconds"]
+    assert result["peak_mb"] < control["peak_mb"] + 16, (result["peak_mb"], control["peak_mb"])

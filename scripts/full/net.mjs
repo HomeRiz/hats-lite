@@ -45,6 +45,11 @@ export function recordBlocked(blocked, url) {
 
 export async function hardenPage(page) {
   await page.setBypassServiceWorker(true);
+  page.on("popup", (popup) => {
+    try {
+      popup?.close()?.catch?.(() => {});
+    } catch {}
+  });
   await page.evaluateOnNewDocument(blockSockets, BLOCKED_GLOBALS);
 }
 
