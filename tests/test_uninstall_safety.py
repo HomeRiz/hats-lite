@@ -208,7 +208,9 @@ class TestRemovingBlocksAssignments:
         repo.gate = asyncio.Event()
         client = await hass_ws_client(hass)
         await start(client)
-        assert hass.data[DOMAIN]["removing"]
+        async with asyncio.timeout(10):
+            while not hass.data[DOMAIN].get("removing"):
+                await asyncio.sleep(0.01)
         return client
 
     async def test_trial_birthday_holiday_and_own(self, hass, hacs, repo, hass_ws_client, hass_admin_user):

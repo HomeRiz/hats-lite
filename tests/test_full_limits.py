@@ -12,9 +12,11 @@ BIG = "{% set a = 'a' * 60000 %}"
 
 PROBE = """
 import json, resource, subprocess, sys, time
-worker, states, template = sys.argv[1], sys.argv[2], sys.argv[3]
+worker = sys.argv[1]
+payload = json.loads(sys.stdin.read())
+states, template = payload["states"], payload["template"]
 proc = subprocess.Popen([sys.executable, "-I", worker], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-proc.stdin.write(json.dumps({"op": "init", "states": json.loads(states)}) + "\\n")
+proc.stdin.write(json.dumps({"op": "init", "states": states}) + "\\n")
 proc.stdin.flush()
 proc.stdout.readline()
 started = time.monotonic()
@@ -31,7 +33,8 @@ print(json.dumps({"reply": reply, "seconds": seconds, "peak_mb": peak / (1048576
 
 def probe(tmp_path, template):
     proc = subprocess.run(
-        [sys.executable, "-I", "-c", PROBE, str(WORKER), json.dumps(STATES), template],
+        [sys.executable, "-I", "-c", PROBE, str(WORKER)],
+        input=json.dumps({"states": STATES, "template": template}),
         capture_output=True,
         text=True,
         timeout=120,
