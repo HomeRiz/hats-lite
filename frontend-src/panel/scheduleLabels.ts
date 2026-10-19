@@ -85,6 +85,7 @@ export function untilText(item: DayItem, locale?: string, zone?: string): string
 
 export function windowText(item: DayItem): string {
   if (item.partial !== true || !item.active_from || !item.active_until) return "";
+  if (item.active_from === item.active_until) return "";
   const from = item.active_from === "00:00" ? "" : t.appliesFrom(item.active_from);
   const until = item.active_until === "24:00" ? "" : t.untilTime(item.active_until);
   return [from, until].filter(Boolean).join(" ");

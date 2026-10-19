@@ -31,3 +31,5 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 - A wallpaper that failed to load made the compared pane transparent.
 - A permanent theme error kept the thumbnail on its skeleton until the retry ended.
 - The Installed chip now follows the themes Home Assistant has loaded.
+- The options sheet closes when a phone is turned to a wide layout, and the preview action bar sticks only at phone width.
+- The calendar no longer keeps a selected day after a month or person change, shows only the loading state until the first month arrives, and accepts 24:00 only as an end time.

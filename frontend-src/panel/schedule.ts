@@ -116,6 +116,7 @@ export class HatsLiteSchedule extends LitElement {
     if (month < bounds.min || month > bounds.max) return;
     this.month = month;
     this.focusKey = focus;
+    if (monthOf(this.selected) !== month) this.selected = "";
     this.data = null;
     await this.load();
     await this.updateComplete;
@@ -151,6 +152,7 @@ export class HatsLiteSchedule extends LitElement {
 
   private onPerson = (event: Event): void => {
     this.userId = (event.target as HTMLSelectElement).value;
+    this.selected = "";
     this.data = null;
     void this.load();
   };
@@ -276,6 +278,9 @@ export class HatsLiteSchedule extends LitElement {
       return html`${this.renderNav()}
         <p class="notice error" role="alert">${this.failure || t.loadFailed}</p>
         <button class="btn" type="button" id="retry-calendar" @click=${() => void this.load()}>${t.retry}</button>`;
+    }
+    if (this.data === null) {
+      return html`${this.renderNav()}<p class="muted" role="status">${t.loading}</p>`;
     }
     return html`
       ${this.renderNav()}

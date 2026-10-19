@@ -23,7 +23,8 @@ export type Month = { month: string; user: string; time_zone: string; opt_out: b
 
 const KINDS = ["override", "birthday", "holiday"];
 const DAY_KEY = /^(\d{4})-(\d{2})-(\d{2})$/;
-const CLOCK = /^([01][0-9]|2[0-4]):[0-5][0-9]$/;
+const CLOCK = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+const CLOCK_END = /^(([01][0-9]|2[0-3]):[0-5][0-9]|24:00)$/;
 const MONTH_KEY = /^(\d{4})-(\d{2})$/;
 
 function pad(value: number, size = 2): string {
@@ -157,7 +158,7 @@ function cleanItem(raw: unknown): DayItem | null {
   delete clean.partial;
   delete clean.active_from;
   delete clean.active_until;
-  if (item.partial === true && CLOCK.test(String(item.active_from)) && CLOCK.test(String(item.active_until))) {
+  if (item.partial === true && CLOCK.test(String(item.active_from)) && CLOCK_END.test(String(item.active_until))) {
     clean.partial = true;
     clean.active_from = item.active_from;
     clean.active_until = item.active_until;
