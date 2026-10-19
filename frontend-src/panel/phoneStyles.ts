@@ -1,8 +1,9 @@
 import { css } from "lit";
 import { HIT_TARGET } from "./touch";
+import { phoneMedia } from "./viewport";
 
 export const phonePreviewStyles = css`
-  @media (max-width: 600px) {
+  ${phoneMedia} {
     .toolbar {
       display: block;
     }
@@ -35,7 +36,7 @@ export const phoneShellStyles = css`
     padding-left: max(24px, env(safe-area-inset-left, 0px));
     padding-right: max(24px, env(safe-area-inset-right, 0px));
   }
-  @media (max-width: 600px) {
+  ${phoneMedia} {
     .page {
       padding-left: max(16px, env(safe-area-inset-left, 0px));
       padding-right: max(16px, env(safe-area-inset-right, 0px));
@@ -59,7 +60,7 @@ export const phoneShellStyles = css`
 `;
 
 export const phoneDesignerStyles = css`
-  @media (max-width: 600px) {
+  ${phoneMedia} {
     .layout {
       display: flex;
       flex-direction: column;

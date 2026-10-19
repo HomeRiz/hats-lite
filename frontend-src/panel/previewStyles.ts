@@ -3,6 +3,7 @@ import { chromeStyles } from "./previewChromeStyles";
 import { phonePreviewStyles } from "./phoneStyles";
 import { controls, tokens } from "./ui";
 import { dividerStyles, safeAreaStyles } from "./touch";
+import { phoneMedia } from "./viewport";
 
 const layout = css`
   :host {
@@ -180,7 +181,7 @@ const layout = css`
     font-size: 14px;
     color: var(--error-color, #db4437);
   }
-  @media (max-width: 899px) {
+  ${phoneMedia} {
     .actions {
       position: sticky;
       bottom: 0;

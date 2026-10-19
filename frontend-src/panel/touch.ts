@@ -1,4 +1,5 @@
 import { css } from "lit";
+import { phoneMedia } from "./viewport";
 
 export const HIT_TARGET = 44;
 export const KEYBOARD_VAR = "--hl-kb";
@@ -48,7 +49,7 @@ export const safeAreaStyles = css`
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
   }
-  @media (max-width: 899px) {
+  ${phoneMedia} {
     .actions {
       bottom: var(--hl-kb, env(keyboard-inset-height, 0px));
       padding-top: 10px;

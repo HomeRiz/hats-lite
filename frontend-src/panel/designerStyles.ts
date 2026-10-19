@@ -165,8 +165,8 @@ export const designerStyles = [
     gap: 10px;
     padding: 12px;
     border-radius: var(--hl-radius-lg);
-    background: var(--hl-surface);
-    border: 1px solid var(--hl-line);
+    background: color-mix(in srgb, var(--hl-surface) 90%, var(--hl-text));
+    border: 1px solid var(--hl-edge);
   }
   .bar label {
     flex: 1 1 140px;

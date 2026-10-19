@@ -1,5 +1,6 @@
 import { LitElement, css, html } from "lit";
 import { HIT_TARGET, installKeyboardInset } from "./touch";
+import { phoneMedia, watchPhoneViewport } from "./viewport";
 
 installKeyboardInset();
 
@@ -13,6 +14,7 @@ export class HatsLiteSheet extends LitElement {
 
   open = false;
   label = "";
+  private stopWatching: () => void = () => undefined;
 
   static styles = css`
     :host,
@@ -22,7 +24,7 @@ export class HatsLiteSheet extends LitElement {
     .toggle {
       display: none;
     }
-    @media (max-width: 600px) {
+    ${phoneMedia} {
       :host {
         display: block;
         flex: 1 1 100%;
@@ -81,10 +83,15 @@ export class HatsLiteSheet extends LitElement {
     super.connectedCallback();
     installKeyboardInset();
     this.addEventListener("keydown", this.onKey);
+    this.stopWatching = watchPhoneViewport((isPhone) => {
+      if (!isPhone) this.open = false;
+    });
   }
 
   disconnectedCallback(): void {
     this.removeEventListener("keydown", this.onKey);
+    this.stopWatching();
+    this.stopWatching = () => undefined;
     super.disconnectedCallback();
   }
 
