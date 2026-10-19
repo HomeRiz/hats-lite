@@ -86,8 +86,9 @@ export function firstWeekday(hass: PanelHass | undefined): number {
   const locale = (hass as Localized | undefined)?.locale;
   const named = LOCALE_DAYS[locale?.first_weekday ?? ""];
   if (named !== undefined) return named;
+  if (!locale?.language) return 1;
   try {
-    const info = (new Intl.Locale(locale?.language ?? "en") as unknown as { getWeekInfo?: () => { firstDay: number } }).getWeekInfo?.();
+    const info = (new Intl.Locale(locale.language) as unknown as { getWeekInfo?: () => { firstDay: number } }).getWeekInfo?.();
     if (info && info.firstDay >= 1 && info.firstDay <= 7) return info.firstDay % 7;
   } catch {
     return 1;

@@ -1,8 +1,9 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-from homeassistant.components.frontend import DATA_PANELS, Panel
+from homeassistant.components.frontend import DATA_PANELS
 from people_support import call, clock, client_for, make_user, setup  # noqa: F401
 
 from custom_components.hats_lite.advanced import OPTION_ADVANCED, advanced_info, valid_path
@@ -12,7 +13,7 @@ CASES = json.loads((Path(__file__).parent / "fixtures" / "advanced_paths.json").
 
 
 def add_panel(hass, path, title):
-    hass.data[DATA_PANELS][path] = Panel("custom", title, "mdi:x", True, path, {}, False, None, True)
+    hass.data[DATA_PANELS][path] = SimpleNamespace(frontend_url_path=path, sidebar_title=title)
 
 
 def set_option(hass, value):
