@@ -4,6 +4,7 @@ from collections.abc import ItemsView, KeysView, ValuesView
 
 from jinja2.exceptions import SecurityError
 from jinja2.runtime import Macro
+from markupsafe import Markup
 
 MAX_ARG = 10000
 MAX_RESULT = 262144
@@ -16,6 +17,9 @@ SEQUENCES = (list, tuple, set, frozenset, KeysView, ValuesView, ItemsView)
 BREAKS = ("\n", "\r", "\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029")
 REPR_WIDE = 10
 OBJECT = 96
+MARKUP_REPR = 10
+MACRO_REPR = 8
+ANONYMOUS_MACRO = 17
 
 
 def refuse(message="result is too large"):
@@ -36,8 +40,9 @@ def quoted(text):
     if isinstance(text, bytes):
         return 4 * len(text) + 3
     if text.isprintable():
-        return len(text) + text.count("\\") + text.count("'") + 10
-    return (4 if text.isascii() else REPR_WIDE) * len(text) + 10
+        quotes = text.count("'") if '"' in text else 0
+        return len(text) + text.count("\\") + quotes + (MARKUP_REPR if isinstance(text, Markup) else 2)
+    return (4 if text.isascii() else REPR_WIDE) * len(text) + MARKUP_REPR
 
 
 def estimate(value, budget=MAX_PRODUCED, quote=False):
@@ -61,7 +66,7 @@ def estimate(value, budget=MAX_PRODUCED, quote=False):
         elif not quote:
             total += 32
         elif isinstance(item, Macro):
-            total += len(item.name or "") + 16
+            total += ANONYMOUS_MACRO if item.name is None else quoted(item.name) + MACRO_REPR
         elif isinstance(item, types.MethodType):
             total += OBJECT
             stack.append(item.__self__)

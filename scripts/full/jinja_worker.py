@@ -99,31 +99,55 @@ class WorkerEnvironment(ImmutableSandboxedEnvironment):
         return super().call_binop(context, operator, left, right)
 
 
-def _copy(state):
-    return json.loads(json.dumps({"entity_id": state["entity_id"], "state": state["state"], "attributes": state.get("attributes") or {}}))
+def _freeze(state):
+    return json.dumps({"entity_id": state["entity_id"], "state": state["state"], "attributes": state.get("attributes") or {}})
+
+
+class Copies:
+    def __init__(self, by_id, meter):
+        self.by_id = by_id
+        self.meter = meter
+        self.cache = {}
+
+    def reset(self):
+        self.cache = {}
+
+    def one(self, key):
+        found = self.cache.get(key)
+        if found is None:
+            blob = _freeze(self.by_id[key])
+            self.meter.copy(len(blob))
+            found = self.cache[key] = json.loads(blob)
+        return found
+
+    def every(self):
+        self.meter.items(len(self.by_id))
+        return [self.one(key) for key in self.by_id]
 
 
 class Domain:
-    __slots__ = ("_items",)
+    __slots__ = ("_items", "_copies")
 
-    def __init__(self, items):
+    def __init__(self, items, copies):
         self._items = items
+        self._copies = copies
 
     def __getattr__(self, name):
         if name.startswith("_") or name not in self._items:
             raise AttributeError(name)
-        return _copy(self._items[name])
+        return self._copies.one(self._items[name])
 
 
 class States:
-    __slots__ = ("_by_id",)
+    __slots__ = ("_by_id", "_copies")
 
-    def __init__(self, by_id):
+    def __init__(self, by_id, copies):
         self._by_id = by_id
+        self._copies = copies
 
     def __call__(self, entity_id=None):
         if entity_id is None:
-            return [_copy(s) for s in self._by_id.values()]
+            return self._copies.every()
         s = self._by_id.get(entity_id)
         return s["state"] if s else "unknown"
 
@@ -131,10 +155,19 @@ class States:
         if domain.startswith("_"):
             raise AttributeError(domain)
         prefix = domain + "."
-        items = {k[len(prefix):]: v for k, v in self._by_id.items() if k.startswith(prefix)}
+        items = {k[len(prefix):]: k for k in self._by_id if k.startswith(prefix)}
         if not items:
             raise AttributeError(domain)
-        return Domain(items)
+        return Domain(items, self._copies)
+
+
+def _normal(state):
+    state = dict(state)
+    if not isinstance(state.get("state"), str):
+        state["state"] = "unknown"
+    if not isinstance(state.get("attributes"), dict):
+        state["attributes"] = {}
+    return state
 
 
 def _bounded_range(*args):
@@ -145,8 +178,11 @@ def _bounded_range(*args):
 
 
 def make_env(states):
-    by_id = {s["entity_id"]: s for s in states}
-    states_proxy = States(by_id)
+    by_id = {s["entity_id"]: _normal(s) for s in states if isinstance(s, dict) and isinstance(s.get("entity_id"), str)}
+    env = WorkerEnvironment(loader=BaseLoader(), autoescape=False)
+    copies = Copies(by_id, env.meter)
+    env.copies = copies
+    states_proxy = States(by_id, copies)
 
     def is_state(entity_id, value):
         s = by_id.get(entity_id)
@@ -161,8 +197,7 @@ def make_env(states):
         return s is not None and s["state"] not in ("unknown", "unavailable")
 
     def state_attr(entity_id, attr):
-        s = by_id.get(entity_id)
-        return _copy(s)["attributes"].get(attr) if s else None
+        return copies.one(entity_id)["attributes"].get(attr) if entity_id in by_id else None
 
     def is_state_attr(entity_id, attr, value):
         return state_attr(entity_id, attr) == value
@@ -170,7 +205,6 @@ def make_env(states):
     def as_timestamp(value):
         return value.timestamp() if isinstance(value, datetime.datetime) else float(value)
 
-    env = WorkerEnvironment(loader=BaseLoader(), autoescape=False)
     for name in REMOVED:
         env.globals.pop(name, None)
     limits.install_filters(env)
@@ -229,6 +263,7 @@ def render(env, template, variables):
     if not isinstance(variables, dict):
         variables = {}
     env.meter.reset()
+    env.copies.reset()
     signal.setitimer(signal.ITIMER_REAL, RENDER_SECONDS)
     try:
         parts = []
@@ -246,6 +281,7 @@ def render(env, template, variables):
         return "".join(parts)
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
+        env.copies.reset()
         gc.collect()
 
 
@@ -256,7 +292,7 @@ def main():
     for line in sys.stdin:
         msg = json.loads(line)
         if msg.get("op") == "init":
-            env = make_env(msg["states"])
+            env = make_env(msg["states"] if isinstance(msg.get("states"), list) else [])
             print(json.dumps({"ok": True}), flush=True)
             continue
         try:

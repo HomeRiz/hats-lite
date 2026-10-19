@@ -1,3 +1,4 @@
+import re
 import types
 from functools import update_wrapper
 
@@ -29,19 +30,30 @@ CONTAINERS = (list, tuple, set, frozenset, dict)
 REMOVED_FILTERS = ("urlize", "pprint")
 BUILDERS = ("list", "sort", "dictsort", "groupby")
 ITEM = 8
+MAX_COPIED = 16 * 1048576
 CASE = ("upper", "lower", "title", "capitalize", "swapcase", "casefold")
 CODECS = ("utf-8", "utf8", "ascii", "latin-1")
 NO_TEXT = ("startswith", "endswith", "count", "find", "rfind", "index", "rindex")
 NAMED = 92
 MARKUP = 5
+SPLITS = ("split", "rsplit", "splitlines")
+SPLIT_ITEM = 64
+WORDS = {str: re.compile(r"\S+"), bytes: re.compile(rb"\S+")}
 
 
 class Meter:
     def __init__(self):
         self.used = 0
+        self.copied = 0
 
     def reset(self):
         self.used = 0
+        self.copied = 0
+
+    def copy(self, size):
+        self.copied += size
+        if self.copied > MAX_COPIED:
+            refuse("state copies are too large")
 
     def spend(self, size):
         if size > MAX_RESULT:
@@ -96,6 +108,25 @@ def meter_call(meter, obj, args, kwargs):
     return args
 
 
+def split_items(owner, name, args, kwargs):
+    kind = bytes if isinstance(owner, bytes) else str
+    if name == "splitlines":
+        if kind is bytes:
+            return owner.count(b"\n") + owner.count(b"\r") + 1
+        return line_count(owner)
+    sep = pick(args, kwargs, 0, "sep")
+    if isinstance(sep, kind) and sep:
+        items = owner.count(sep) + 1
+    elif sep is None:
+        items = sum(1 for _ in WORDS[kind].finditer(owner))
+    else:
+        items = 1
+    limit = pick(args, kwargs, 1, "maxsplit", -1)
+    if is_int(limit) and limit >= 0:
+        items = min(items, limit + 1)
+    return items
+
+
 def method_bound(owner, name, args, kwargs):
     check_ints(args)
     check_ints(kwargs.values())
@@ -119,6 +150,8 @@ def method_bound(owner, name, args, kwargs):
         values = table.values() if isinstance(table, dict) else table if isinstance(table, (list, tuple)) else ()
         widest = max((len(v) for v in values if isinstance(v, TEXT)), default=1)
         return size * max(widest, 1), args
+    if name in SPLITS:
+        return size + SPLIT_ITEM * split_items(owner, name, args, kwargs), args
     return size * growth(owner, name, args, kwargs), args
 
 
