@@ -16,6 +16,7 @@ import { removing, renderInstallExtras, renderSlot, renderUninstall, usesSlot, t
 import { renderLookSwitch } from "./realLook";
 import { renderMenuSwitch, renderModNote, renderShell } from "./previewChrome";
 import { frameWidth, sidebarOn, sidebarWidth } from "./previewChromeData";
+import "./sheet";
 import { renderNav, renderNavSide, type NavDirection, type NavModel } from "./previewNav";
 import { stringsPreview as s } from "./strings.preview";
 
@@ -137,6 +138,7 @@ function compareSwitch(m: ToolbarModel, h: ToolbarHandlers): TemplateResult {
 export function renderToolbar(m: ToolbarModel, h: ToolbarHandlers): TemplateResult {
   return html`
     <div class="toolbar">
+      <hats-lite-sheet .label=${s.sheet}>
       <label class="field">${s.dashboard}
         <select class="pill" @change=${h.onDashboard}>
           ${m.dashboards.map((d, i) => html`<option value=${String(i)} .selected=${d.url_path === m.dashboardUrl}>${optionLabel(d, m.generatedDefault)}</option>`)}
@@ -161,6 +163,7 @@ export function renderToolbar(m: ToolbarModel, h: ToolbarHandlers): TemplateResu
       ${renderMenuSwitch({ frame: m.frame, menu: m.menu }, h)}
       ${renderLookSwitch({ available: m.realAvailable, real: m.real }, h.onLook)}
       ${compareSwitch(m, h)}
+      </hats-lite-sheet>
     </div>`;
 }
 

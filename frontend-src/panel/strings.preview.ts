@@ -15,6 +15,7 @@ export const stringsPreview = {
   light: "Light",
   current: "Current",
   candidate: "Candidate",
+  sheet: "Preview options",
   divider: "Drag to compare current and candidate",
   splitAt: "Split at {percent} percent",
   apply: "Apply",

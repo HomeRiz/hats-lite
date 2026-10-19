@@ -1,6 +1,8 @@
 import { css } from "lit";
 import { chromeStyles } from "./previewChromeStyles";
+import { phonePreviewStyles } from "./phoneStyles";
 import { controls, tokens } from "./ui";
+import { dividerStyles, safeAreaStyles } from "./touch";
 
 const layout = css`
   :host {
@@ -117,42 +119,6 @@ const layout = css`
     z-index: 2;
     background: transparent;
   }
-  .divider {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    z-index: 3;
-    width: 28px;
-    margin-left: -14px;
-    cursor: ew-resize;
-    touch-action: none;
-    outline: none;
-  }
-  .divider::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 13px;
-    width: 2px;
-    background: var(--hl-accent);
-  }
-  .divider::before {
-    content: "";
-    position: absolute;
-    z-index: 1;
-    top: 50%;
-    left: 0;
-    width: 28px;
-    height: 28px;
-    margin-top: -14px;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
-  }
-  .divider:focus-visible::before {
-    box-shadow: 0 0 0 3px var(--hl-focus), 0 2px 8px rgba(0, 0, 0, 0.35);
-  }
   .badges {
     position: absolute;
     inset: 0;
@@ -223,4 +189,4 @@ const layout = css`
   }
 `;
 
-export const previewStyles = [tokens, controls, layout, chromeStyles];
+export const previewStyles = [tokens, controls, layout, chromeStyles, dividerStyles, safeAreaStyles, phonePreviewStyles];

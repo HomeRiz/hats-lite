@@ -1,4 +1,5 @@
 import { css } from "lit";
+import { phoneShellStyles } from "./phoneStyles";
 import { controls, tokens } from "./ui";
 
 export const shellStyles = [
@@ -128,4 +129,5 @@ export const shellStyles = [
     }
   }
 `,
+  phoneShellStyles,
 ];

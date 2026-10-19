@@ -1,4 +1,5 @@
 import { css } from "lit";
+import { phoneDesignerStyles } from "./phoneStyles";
 import { controls, tokens } from "./ui";
 
 export const designerStyles = [
@@ -218,4 +219,5 @@ export const designerStyles = [
     }
   }
 `,
+  phoneDesignerStyles,
 ];
