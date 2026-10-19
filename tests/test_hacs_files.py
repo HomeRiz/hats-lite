@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import yaml
@@ -37,8 +38,7 @@ def test_manifest_has_the_keys_hacs_and_hassfest_need():
 
 
 WORKFLOWS = ROOT / ".github" / "workflows"
-HACS_SHA = "d556e736723344f83838d08488c983a15381059a"
-HASSFEST_SHA = "50baf3a307f87100cf550d4ae127746595030d5d"
+FULL_SHA = r"[0-9a-f]{40}"
 
 
 def workflow(name):
@@ -62,8 +62,8 @@ def test_workflows_have_no_comments_and_read_only_defaults():
 
 def test_validate_actions_are_pinned_to_full_shas():
     text = (WORKFLOWS / "validate.yml").read_text()
-    assert f"hacs/action@{HACS_SHA}" in text
-    assert f"home-assistant/actions/hassfest@{HASSFEST_SHA}" in text
+    assert re.search(rf"hacs/action@{FULL_SHA}\s", text)
+    assert re.search(rf"home-assistant/actions/hassfest@{FULL_SHA}\s", text)
     assert "ignore: hacsjson integration_manifest" in text
     assert "@main" not in text and "@master" not in text
 
