@@ -192,7 +192,7 @@ describe("candidate follows hass.themes", () => {
 describe("gallery to preview mode", () => {
   it("passes the gallery mode to the preview", async () => {
     await mount(makeHass([], true));
-    browseEl().shadowRoot!.querySelector<HTMLButtonElement>('[data-mode="light"]')!.click();
+    browseEl().shadowRoot!.querySelector<HTMLButtonElement>('[data-filter="light"]')!.click();
     await browseEl().updateComplete;
     select();
     await panel.updateComplete;

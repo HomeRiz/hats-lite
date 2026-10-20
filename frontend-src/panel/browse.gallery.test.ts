@@ -38,7 +38,7 @@ describe("browse thumbnails", () => {
     const thumb = thumbs(el)[0];
     expect(thumb.style.getPropertyValue("--primary-background-color")).toBe("#000");
 
-    el.shadowRoot!.querySelector<HTMLButtonElement>('[data-mode="light"]')!.click();
+    el.shadowRoot!.querySelector<HTMLButtonElement>('[data-filter="light"]')!.click();
     await settle(el);
     expect(thumb.style.getPropertyValue("--primary-background-color")).toBe("#fff");
     expect(thumb.style.getPropertyValue("--card-background-color")).toBe("#ffffff");

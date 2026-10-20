@@ -76,7 +76,7 @@ describe("browse atlas", () => {
   it("swaps the atlas when the mode changes", async () => {
     useAtlas({ index });
     const el = await mount(makeHass());
-    el.shadowRoot!.querySelector<HTMLButtonElement>('[data-mode="light"]')!.click();
+    el.shadowRoot!.querySelector<HTMLButtonElement>('[data-filter="light"]')!.click();
     await settle(el);
     expect(atlasDivs(el)[0].style.backgroundImage).toContain("atlas-light.webp");
   });

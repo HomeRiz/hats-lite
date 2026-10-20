@@ -41,16 +41,14 @@ export const browseStyles = css`
     margin-bottom: 20px;
     border-bottom: 1px solid var(--hl-line);
   }
-  .showing {
-    color: var(--hl-muted);
-  }
   .filters {
     display: flex;
-    gap: 8px;
+    gap: 4px;
     flex: 1 1 auto;
     min-width: 0;
     overflow-x: auto;
-    padding: 2px;
+    padding: 2px 12px 2px 2px;
+    scroll-padding-inline-end: 12px;
   }
   .filters .chip-btn {
     flex: none;

@@ -18,7 +18,7 @@ import {
   writeCatalogCache,
 } from "./browseCatalog";
 import { renderToolbar } from "./browseToolbar";
-import { entryKey, passesFilter, type FilterId } from "./browseFilters";
+import { entryKey, modeForFilter, passesFilter, type FilterId } from "./browseFilters";
 import { AtlasStore, type AtlasTheme } from "./browseAtlas";
 import { renderCard, type CardModel } from "./browseCard";
 import { KnownNames, installedKind, isInUse, isInstalledRepo, sameList } from "./browseNames";
@@ -291,9 +291,13 @@ export class HatsLiteBrowse extends LitElement {
     this.query = (event.target as HTMLInputElement).value;
   };
 
-  private setMode(mode: PreviewMode): void {
-    this.modeTouched = true;
-    this.mode = mode;
+  private pickFilter(id: FilterId): void {
+    const next = modeForFilter(id, this.mode);
+    if (next !== this.mode) {
+      this.modeTouched = true;
+      this.mode = next;
+    }
+    this.filter = id;
   }
 
   private cardModel(entry: CatalogEntry, names: string[], installed: boolean): CardModel {
@@ -365,13 +369,9 @@ export class HatsLiteBrowse extends LitElement {
             </button>`
           : nothing}
         ${renderToolbar({
-          mode: this.mode,
           filter: this.filter,
           query: this.query,
-          onMode: (mode) => this.setMode(mode),
-          onFilter: (id) => {
-            this.filter = id;
-          },
+          onFilter: (id) => this.pickFilter(id),
           onSearch: this.onSearch,
         })}
         <div class="live" role="status" aria-live="polite">

@@ -1,8 +1,13 @@
-import type { CatalogEntry } from "./contract";
+import type { CatalogEntry, PreviewMode } from "./contract";
 import type { CachedTheme } from "./browseCache";
 
 export type FilterId = "all" | "installed" | "dark" | "light" | "glass";
 export const FILTER_IDS: readonly FilterId[] = ["all", "installed", "dark", "light", "glass"];
+
+export function modeForFilter(filter: FilterId, current: PreviewMode): PreviewMode {
+  if (filter === "dark" || filter === "light") return filter;
+  return current;
+}
 
 export function repoName(fullName: string): string {
   const parts = fullName.split("/");

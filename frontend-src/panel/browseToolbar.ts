@@ -1,6 +1,5 @@
 import { html } from "lit";
 import { FILTER_IDS, type FilterId } from "./browseFilters";
-import type { PreviewMode } from "./contract";
 import { stringsBrowse } from "./strings.browse";
 
 const FILTER_LABELS: Record<FilterId, string> = {
@@ -12,10 +11,8 @@ const FILTER_LABELS: Record<FilterId, string> = {
 };
 
 export type ToolbarProps = {
-  mode: PreviewMode;
   filter: FilterId;
   query: string;
-  onMode: (mode: PreviewMode) => void;
   onFilter: (id: FilterId) => void;
   onSearch: (event: Event) => void;
 };
@@ -23,21 +20,6 @@ export type ToolbarProps = {
 export function renderToolbar(p: ToolbarProps) {
   return html`
     <div class="toolbar">
-      <span class="showing">${stringsBrowse.showing}</span>
-      <div class="seg" role="group" aria-label=${stringsBrowse.modeLabel}>
-        ${(["dark", "light"] as const).map(
-          (mode) => html`
-            <button
-              type="button"
-              data-mode=${mode}
-              aria-pressed=${p.mode === mode ? "true" : "false"}
-              @click=${() => p.onMode(mode)}
-            >
-              ${mode === "dark" ? stringsBrowse.modeDark : stringsBrowse.modeLight}
-            </button>
-          `,
-        )}
-      </div>
       <div class="filters" role="group" aria-label=${stringsBrowse.filterLabel}>
         ${FILTER_IDS.map(
           (id) => html`
