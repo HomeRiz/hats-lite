@@ -5,16 +5,17 @@ export class StageGuard {
   private current?: HTMLElement;
   private stopRelay?: () => void;
 
-  sync(root: ParentNode | null | undefined): void {
+  sync(root: ParentNode | null | undefined): boolean {
     const found = root?.querySelector(".stage");
     const next = found instanceof HTMLElement ? found : undefined;
-    if (next === this.current) return;
+    if (next === this.current) return false;
     this.release();
     if (next) {
       this.current = next;
       guardStage(next);
       this.stopRelay = relayContexts(next);
     }
+    return next !== undefined;
   }
 
   release(): void {

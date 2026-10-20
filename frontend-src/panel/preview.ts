@@ -136,7 +136,7 @@ export class HatsLitePreview extends LitElement {
     if (this.real.leftReal(this.candidate) && !changed.has("cards")) void this.buildCards();
     this.dataset.scheme = this.hass?.themes?.darkMode ? "dark" : "light";
     if (changed.has("cards")) void this.buildCards();
-    this.guard.sync(this.renderRoot);
+    if (this.guard.sync(this.renderRoot) && !changed.has("cards")) void this.buildCards();
   }
 
   private comparing(): boolean {
