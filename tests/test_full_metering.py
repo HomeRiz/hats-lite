@@ -136,3 +136,17 @@ def test_non_dict_attributes_do_not_fail_the_render(tmp_path):
 def test_a_non_list_init_does_not_kill_the_worker(tmp_path):
     reply = run_states(tmp_path, None, "{{ 1 + 1 }}")["reply"]
     assert reply == {"id": 1, "result": "2"}
+
+
+def test_domain_scans_are_charged_per_entity(tmp_path):
+    states = many_states(5000, 1)
+    template = "{% for i in range(1000) %}{{ states.sensor.s0.state }}{% endfor %}"
+    result = run_states(tmp_path, states, template)
+    assert "too much text" in result["reply"].get("error", ""), str(result["reply"])[:200]
+    assert result["seconds"] < 3, result["seconds"]
+
+
+def test_a_few_domain_scans_still_render(tmp_path):
+    states = many_states(500, 1)
+    template = "{% for i in range(20) %}{{ states.sensor.s1.state }}{% endfor %}"
+    assert run_states(tmp_path, states, template)["reply"] == {"id": 1, "result": "on" * 20}

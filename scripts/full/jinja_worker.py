@@ -154,6 +154,7 @@ class States:
     def __getattr__(self, domain):
         if domain.startswith("_"):
             raise AttributeError(domain)
+        self._copies.meter.items(len(self._by_id))
         prefix = domain + "."
         items = {k[len(prefix):]: k for k in self._by_id if k.startswith(prefix)}
         if not items:
