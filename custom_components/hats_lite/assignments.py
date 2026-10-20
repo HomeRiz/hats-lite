@@ -4,7 +4,7 @@ DEFAULT_THEME = "default"
 MAX_RANGE_SECONDS = 366 * 86400
 LIMIT_CODES = frozenset({"too_many_overrides", "too_many_holidays", "too_many_assigners"})
 HOLIDAY_KEYS = frozenset(
-    {"id", "name", "month_start", "day_start", "month_end", "day_end", "theme", "enabled", "dark"}
+    {"id", "name", "month_start", "day_start", "month_end", "day_end", "theme", "enabled", "dark", "kind", "year"}
 )
 
 

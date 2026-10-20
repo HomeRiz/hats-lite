@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coveredSpans, endsProblem, holidayProblem, toLocalInput, untilSeconds, validDay, MAX_UNTIL_SECONDS } from "./peopleForm";
+import { coveredSpans, endsProblem, eventYear, holidayProblem, toLocalInput, untilSeconds, validDay, MAX_UNTIL_SECONDS } from "./peopleForm";
 
 const base = {
   id: "h1",
@@ -60,5 +60,58 @@ describe("zoned local input", () => {
 
   it("falls back to the browser zone for an unknown zone", () => {
     expect(untilSeconds("2026-03-20T10:00", "Nope/Zone")).toBe(untilSeconds("2026-03-20T10:00"));
+  });
+});
+
+describe("eventYear", () => {
+  const once = { ...base, month_start: 6, day_start: 10, month_end: 6, day_end: 12 };
+
+  it("uses this year while the occurrence has not ended and next year after", () => {
+    expect(eventYear(once, new Date(2026, 5, 9))).toBe(2026);
+    expect(eventYear(once, new Date(2026, 5, 12))).toBe(2026);
+    expect(eventYear(once, new Date(2026, 5, 13))).toBe(2027);
+    expect(eventYear(once, new Date(2026, 0, 1))).toBe(2026);
+  });
+
+  it("keeps the current year for an event already running", () => {
+    const long = { ...once, month_end: 6, day_end: 30 };
+    expect(eventYear(long, new Date(2026, 5, 20))).toBe(2026);
+  });
+
+  it("uses the start year of a window that wraps over new year", () => {
+    expect(eventYear(base, new Date(2027, 0, 2))).toBe(2026);
+    expect(eventYear(base, new Date(2027, 0, 5))).toBe(2026);
+    expect(eventYear(base, new Date(2027, 0, 6))).toBe(2027);
+    expect(eventYear(base, new Date(2026, 11, 25))).toBe(2026);
+    expect(eventYear(base, new Date(2026, 5, 1))).toBe(2026);
+  });
+
+  it("reads today in the given time zone", () => {
+    const instant = new Date(Date.UTC(2026, 5, 12, 23, 30));
+    expect(eventYear(once, instant, "UTC")).toBe(2026);
+    expect(eventYear(once, instant, "Pacific/Auckland")).toBe(2027);
+    expect(eventYear(once, instant, "Nope/Zone")).toBe(eventYear(once, instant));
+  });
+});
+
+describe("coveredSpans with a year", () => {
+  const once = { ...base, year: 2026 };
+
+  it("covers a one-time wrapped event only in its own occurrence", () => {
+    expect(coveredSpans(once, 12, 2026)).toEqual([{ from: 20, to: 31 }]);
+    expect(coveredSpans(once, 12, 2027)).toEqual([]);
+    expect(coveredSpans(once, 1, 2027)).toEqual([{ from: 1, to: 5 }]);
+    expect(coveredSpans(once, 1, 2026)).toEqual([]);
+  });
+
+  it("covers a one-time plain event only in its year", () => {
+    const plain = { ...base, month_start: 6, day_start: 10, month_end: 6, day_end: 12, year: 2026 };
+    expect(coveredSpans(plain, 6, 2026)).toEqual([{ from: 10, to: 12 }]);
+    expect(coveredSpans(plain, 6, 2027)).toEqual([]);
+  });
+
+  it("ignores the year for a yearly item", () => {
+    expect(coveredSpans(base, 6, 2030)).toEqual([]);
+    expect(coveredSpans(base, 12, 2030)).toEqual([{ from: 20, to: 31 }]);
   });
 });

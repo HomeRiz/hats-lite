@@ -77,6 +77,20 @@ describe("day detail", () => {
     expect(root(el).querySelector<HTMLButtonElement>("#preview-day")?.disabled).toBe(true);
   });
 
+  it("treats a hidden helper theme as installed", async () => {
+    const hidden = "Pack (do not modify)";
+    const respond = (msg: Call) =>
+      msg.type === "hats_lite/calendar"
+        ? emptyMonth(String(msg.month), { [`${String(msg.month)}-10`]: { winner: { source: "manual", selection: { theme: hidden } }, items: [] } })
+        : {};
+    const el = await mount(makeHass(respond, { themes: { themes: { [hidden]: {} }, darkMode: true } }).hass);
+    await openCalendar(el);
+    cell(el, "2026-03-10").click();
+    await settle(el);
+    expect(root(el).querySelector<HTMLButtonElement>("#preview-day")?.disabled).toBe(false);
+    expect(root(el).textContent).not.toContain("not installed");
+  });
+
   it("offers quick assign only for today or later and sends the end of that day", async () => {
     const people = [{ id: "u1", name: "Mia", is_admin: false, opt_out: false, active_override: null }];
     const el = await mount(makeHass(standard).hass, people);

@@ -33,6 +33,8 @@ export type Holiday = {
   theme: string;
   dark?: boolean;
   enabled?: boolean;
+  kind?: "holiday" | "event";
+  year?: number;
 };
 
 export type AssignInput = { user_id: string; theme: string; dark?: boolean; ends?: number | null };

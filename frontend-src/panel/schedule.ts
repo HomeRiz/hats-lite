@@ -19,6 +19,7 @@ import {
 import { clockIn } from "./scheduleClock";
 import { renderDetail, type DetailModel } from "./scheduleDetail";
 import { daySummary, fullDate, kindsOf, monthTitle, weekdayNames } from "./scheduleLabels";
+import { allThemeNamesOf } from "./peopleThemes";
 import { scheduleStyles } from "./scheduleStyles";
 import { scheduleError, stringsSchedule as t } from "./strings.schedule";
 
@@ -172,7 +173,7 @@ export class HatsLiteSchedule extends LitElement {
   private detailModel(): DetailModel {
     const key = this.selected;
     const day = this.dayOf(key);
-    const installed = Object.keys(this.hass?.themes?.themes ?? {});
+    const installed = allThemeNamesOf(this.hass);
     const future = key >= this.today;
     const zone = this.zone;
     return {
@@ -190,10 +191,13 @@ export class HatsLiteSchedule extends LitElement {
       darkMode: this.hass?.themes?.darkMode,
       onPreview: (theme, dark) =>
         this.dispatchEvent(new CustomEvent("hats-lite-preview-theme", { detail: { theme, dark }, bubbles: true, composed: true })),
-      onAssign: () =>
-        this.dispatchEvent(
-          new CustomEvent("schedule-assign", { detail: { userId: this.userId, until: `${key}T23:59` }, bubbles: true, composed: true }),
-        ),
+      onAssign: () => {
+        const selection = day?.winner?.selection;
+        const detail: Record<string, unknown> = { userId: this.userId, until: `${key}T23:59` };
+        if (selection?.theme) detail.theme = selection.theme;
+        if (selection?.dark !== undefined) detail.dark = selection.dark;
+        this.dispatchEvent(new CustomEvent("schedule-assign", { detail, bubbles: true, composed: true }));
+      },
       onHolidays: () => this.dispatchEvent(new CustomEvent("schedule-holidays", { bubbles: true, composed: true })),
     };
   }

@@ -94,6 +94,13 @@ def birthday_today(birthday, local_date):
     return _fold(month, day, local_date.year) == (local_date.month, local_date.day)
 
 
+def _holiday_year(holiday):
+    year = holiday.get("year")
+    if isinstance(year, int) and not isinstance(year, bool) and 2000 <= year <= 2200:
+        return year
+    return None
+
+
 def holiday_active(holiday, local_date):
     if not isinstance(holiday, dict) or not holiday.get("enabled", True):
         return False
@@ -101,12 +108,15 @@ def holiday_active(holiday, local_date):
     end = (holiday.get("month_end"), holiday.get("day_end"))
     if not _valid_month_day(*start) or not _valid_month_day(*end):
         return False
+    year = _holiday_year(holiday)
     start = _fold(*start, local_date.year)
     end = _fold(*end, local_date.year)
     today = (local_date.month, local_date.day)
     if start <= end:
-        return start <= today <= end
-    return today >= start or today <= end
+        return start <= today <= end and (year is None or local_date.year == year)
+    if today >= start:
+        return year is None or local_date.year == year
+    return today <= end and (year is None or local_date.year == year + 1)
 
 
 def _user_overrides(state, user_id):
@@ -190,8 +200,15 @@ def _candidate_dates(birthday, holidays, today):
         if birthday is not None:
             add(birthday["month"], birthday["day"], year, True)
         for holiday in holidays:
+            if _holiday_year(holiday) is None:
+                add(holiday["month_start"], holiday["day_start"], year, False)
+                add(holiday["month_end"], holiday["day_end"], year, True)
+    for holiday in holidays:
+        year = _holiday_year(holiday)
+        if year is not None:
+            wraps = (holiday["month_start"], holiday["day_start"]) > (holiday["month_end"], holiday["day_end"])
             add(holiday["month_start"], holiday["day_start"], year, False)
-            add(holiday["month_end"], holiday["day_end"], year, True)
+            add(holiday["month_end"], holiday["day_end"], year + 1 if wraps else year, True)
     return [d for d in dates if d > today]
 
 

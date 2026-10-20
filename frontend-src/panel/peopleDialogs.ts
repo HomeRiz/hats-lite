@@ -68,12 +68,14 @@ export class DialogBase extends LitElement {
   static properties = {
     hass: { attribute: false },
     themes: { attribute: false },
+    installed: { attribute: false },
     busy: { state: true },
     error: { state: true },
   };
   static styles = dialogStyles;
   hass?: PanelHass;
   themes: string[] = [];
+  installed: string[] = [];
   busy = false;
   error = "";
 
@@ -104,7 +106,8 @@ export class DialogBase extends LitElement {
     const names = [s.defaultTheme, ...this.themes.filter((n) => n !== s.defaultTheme)];
     const options = names.map((n) => html`<option value=${n} ?selected=${n === selected}>${n}</option>`);
     if (selected && !names.includes(selected)) {
-      options.push(html`<option value=${selected} selected>${s.missingTheme(selected)}</option>`);
+      const label = this.installed.includes(selected) ? selected : s.missingTheme(selected);
+      options.push(html`<option value=${selected} selected>${label}</option>`);
     }
     return options;
   }
@@ -126,13 +129,13 @@ export class DialogBase extends LitElement {
 }
 
 export class HatsLiteAssignDialog extends DialogBase {
-  static properties = { ...DialogBase.properties, person: { attribute: false }, mode: { state: true }, limited: { state: true }, until: { state: true }, startsNow: { attribute: false } };
+  static properties = { ...DialogBase.properties, person: { attribute: false }, mode: { state: true }, limited: { state: true }, until: { state: true }, theme: { state: true }, startsNow: { attribute: false } };
   person?: Person;
   mode: "auto" | "dark" | "light" = "auto";
   limited = false;
   until = "";
   startsNow = false;
-  private theme: string = s.defaultTheme;
+  theme: string = s.defaultTheme;
 
   private get zone(): string | undefined {
     return (this.hass as { config?: { time_zone?: string } } | undefined)?.config?.time_zone || undefined;

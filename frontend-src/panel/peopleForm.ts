@@ -20,25 +20,55 @@ export function holidayProblem(item: Holiday): HolidayProblem | null {
   return null;
 }
 
+function todayIn(today: Date, zone?: string): [number, number, number] {
+  if (zone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-US", { timeZone: zone, year: "numeric", month: "numeric", day: "numeric" }).formatToParts(today);
+      const pick = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+      return [pick("year"), pick("month"), pick("day")];
+    } catch {
+      return [today.getFullYear(), today.getMonth() + 1, today.getDate()];
+    }
+  }
+  return [today.getFullYear(), today.getMonth() + 1, today.getDate()];
+}
+
+function wraps(item: Holiday): boolean {
+  return item.month_start * 32 + item.day_start > item.month_end * 32 + item.day_end;
+}
+
+export function eventYear(item: Holiday, today: Date = new Date(), zone?: string): number {
+  const [year, month, day] = todayIn(today, zone);
+  const now = year * 10000 + month * 100 + day;
+  const span = wraps(item) ? 1 : 0;
+  for (const start of [year - 1, year, year + 1]) {
+    if ((start + span) * 10000 + item.month_end * 100 + item.day_end >= now) return start;
+  }
+  return year + 1;
+}
+
 export function endsProblem(ends: number, now: number): "invalid_range" | null {
   if (!Number.isFinite(ends)) return "invalid_range";
   if (ends <= now || ends > now + MAX_UNTIL_SECONDS) return "invalid_range";
   return null;
 }
 
-function inRange(item: Holiday, month: number, day: number): boolean {
+function inRange(item: Holiday, month: number, day: number, year?: number): boolean {
   const at = month * 32 + day;
   const start = item.month_start * 32 + item.day_start;
   const end = item.month_end * 32 + item.day_end;
-  return start <= end ? at >= start && at <= end : at >= start || at <= end;
+  const dated = item.year !== undefined && year !== undefined;
+  if (start <= end) return at >= start && at <= end && (!dated || year === item.year);
+  if (!dated) return at >= start || at <= end;
+  return (at >= start && year === item.year) || (at <= end && year === (item.year as number) + 1);
 }
 
-export function coveredSpans(item: Holiday, month: number): { from: number; to: number }[] {
+export function coveredSpans(item: Holiday, month: number, year?: number): { from: number; to: number }[] {
   if (item.enabled === false || holidayProblem(item) === "date") return [];
   const spans: { from: number; to: number }[] = [];
   let open: { from: number; to: number } | null = null;
   for (let day = 1; day <= MONTH_DAYS[month - 1]; day += 1) {
-    if (inRange(item, month, day)) {
+    if (inRange(item, month, day, year)) {
       if (open) open.to = day;
       else {
         open = { from: day, to: day };
@@ -80,11 +110,15 @@ function zoneOffset(ms: number, zone: string): number | null {
 export function untilSeconds(local: string, zone?: string): number {
   const asUtc = Date.parse(`${local}Z`);
   if (!zone || Number.isNaN(asUtc)) return Date.parse(local) / 1000;
-  const first = zoneOffset(asUtc, zone);
-  if (first === null) return Date.parse(local) / 1000;
-  const guess = asUtc - first;
-  const second = zoneOffset(guess, zone) ?? first;
-  return (asUtc - second) / 1000;
+  const day = 86400000;
+  const before = zoneOffset(asUtc - day, zone);
+  const after = zoneOffset(asUtc + day, zone);
+  if (before === null || after === null) return Date.parse(local) / 1000;
+  const early = asUtc - before;
+  if (zoneOffset(early, zone) === before) return early / 1000;
+  const late = asUtc - after;
+  if (zoneOffset(late, zone) === after) return late / 1000;
+  return early / 1000;
 }
 
 export function toLocalInput(seconds: number, zone?: string): string {

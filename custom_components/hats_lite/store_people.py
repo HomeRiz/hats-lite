@@ -5,6 +5,9 @@ from datetime import date
 SOURCES = ("manual", "birthday", "holiday", "schedule")
 MAX_OVERRIDES_PER_USER = 50
 MAX_HOLIDAYS = 40
+HOLIDAY_KINDS = ("holiday", "event")
+MIN_YEAR = 2000
+MAX_YEAR = 2200
 MAX_ASSIGNERS = 20
 MAX_ID = 64
 MAX_NAME = 60
@@ -130,6 +133,12 @@ def clean_holiday(raw):
     enabled = raw.get("enabled", True)
     if not isinstance(enabled, bool):
         raise ValueError("invalid_enabled")
+    kind = raw.get("kind", "holiday")
+    if kind not in HOLIDAY_KINDS or not isinstance(kind, str):
+        raise ValueError("invalid_kind")
+    year = raw.get("year")
+    if year is not None and not (type(year) is int and MIN_YEAR <= year <= MAX_YEAR):
+        raise ValueError("invalid_year")
     item = {
         "id": raw["id"],
         "name": raw["name"],
@@ -140,6 +149,10 @@ def clean_holiday(raw):
         "theme": raw["theme"],
         "enabled": enabled,
     }
+    if kind != "holiday":
+        item["kind"] = kind
+    if year is not None:
+        item["year"] = year
     return _with_dark(item, raw)
 
 

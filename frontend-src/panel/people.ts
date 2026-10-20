@@ -12,6 +12,7 @@ import {
 } from "./peopleData";
 import "./peopleDialogs";
 import type { DoneDetail } from "./peopleDialogs";
+import { allThemeNamesOf, themeNamesOf } from "./peopleThemes";
 import { rangeText, renderTimeline } from "./peopleHolidays";
 import "./peopleHolidays";
 import { peopleStyles } from "./peopleStyles";
@@ -19,7 +20,7 @@ import "./schedule";
 import { errorMessage, stringsPeople as s } from "./strings.people";
 
 type Dialog =
-  | { kind: "assign" | "birthday"; person: Person; until?: string }
+  | { kind: "assign" | "birthday"; person: Person; until?: string; theme?: string; dark?: boolean }
   | { kind: "holidays" | "assigners" };
 
 export class HatsLitePeople extends LitElement {
@@ -96,7 +97,7 @@ export class HatsLitePeople extends LitElement {
   }
 
   private themeNames(): string[] {
-    return Object.keys(this.hass?.themes?.themes ?? {}).sort();
+    return themeNamesOf(this.hass);
   }
 
   private open(dialog: Dialog): void {
@@ -111,9 +112,15 @@ export class HatsLitePeople extends LitElement {
   };
 
   private onScheduleAssign = (event: Event): void => {
-    const { userId, until } = (event as CustomEvent<{ userId: string; until: string }>).detail;
+    const { userId, until, theme, dark } = (event as CustomEvent<{ userId: string; until: string; theme?: string; dark?: boolean }>).detail;
     const person = this.people.find((p) => p.id === userId);
-    if (person) this.open({ kind: "assign", person, until });
+    if (person) this.open({ kind: "assign", person, until, theme, dark });
+  };
+
+  private onHolidaysChanged = (event: Event): void => {
+    this.holidays = (event as CustomEvent<Holiday[]>).detail;
+    this.message = s.holidaysSaved;
+    refreshEffective();
   };
 
   private onDone = (event: Event): void => {
@@ -235,7 +242,7 @@ export class HatsLitePeople extends LitElement {
           ? html`<p class="muted">${s.holidaysEmpty}</p>`
           : html`<ul class="holidays">
               ${this.holidays.map(
-                (h) => html`<li>${h.name}: ${rangeText(h)} (${h.theme})${h.enabled === false ? " - off" : ""}</li>`,
+                (h) => html`<li>${s.holidayRowLabel(h.name, h.kind === "event" ? s.eventKind : s.holidayKind)}: ${rangeText(h)} (${h.theme})${h.enabled === false ? " - off" : ""}</li>`,
               )}
             </ul>`}
         ${this.isAdmin
@@ -251,15 +258,18 @@ export class HatsLitePeople extends LitElement {
   private renderDialog() {
     const dialog = this.dialog;
     if (!dialog) return nothing;
-    const common = { hass: this.hass, themes: this.themeNames() };
+    const common = { hass: this.hass, themes: this.themeNames(), installed: allThemeNamesOf(this.hass) };
     switch (dialog.kind) {
       case "assign":
         return html`<hats-lite-assign-dialog
           .hass=${common.hass}
           .themes=${common.themes}
+          .installed=${common.installed}
           .person=${dialog.person}
           .limited=${dialog.until !== undefined}
           .until=${dialog.until ?? ""}
+          .theme=${dialog.theme ?? s.defaultTheme}
+          .mode=${dialog.dark === undefined ? "auto" : dialog.dark ? "dark" : "light"}
           .startsNow=${dialog.until !== undefined}
           @people-close=${this.onClose}
           @people-done=${this.onDone}
@@ -268,6 +278,7 @@ export class HatsLitePeople extends LitElement {
         return html`<hats-lite-birthday-dialog
           .hass=${common.hass}
           .themes=${common.themes}
+          .installed=${common.installed}
           .person=${dialog.person}
           @people-close=${this.onClose}
           @people-done=${this.onDone}
@@ -276,8 +287,10 @@ export class HatsLitePeople extends LitElement {
         return html`<hats-lite-holidays-dialog
           .hass=${common.hass}
           .themes=${common.themes}
+          .installed=${common.installed}
           .holidays=${this.holidays}
           .loaded=${this.holidaysLoaded}
+          @holidays-changed=${this.onHolidaysChanged}
           @people-close=${this.onClose}
           @people-done=${this.onDone}
         ></hats-lite-holidays-dialog>`;

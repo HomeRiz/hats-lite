@@ -90,9 +90,46 @@ export const dialogStyles = [
     margin: 8px 0;
     color: var(--error-color, #e5484d);
   }
-  .holiday {
-    padding: 12px 0;
+  .holiday-list {
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+    max-height: min(320px, 45vh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .holiday-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 0;
     border-top: 1px solid var(--hl-line);
+  }
+  .holiday-main {
+    flex: 1 1 160px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .holiday-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .chip {
+    margin-left: 6px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--hl-line);
+    font-size: 11px;
+    color: var(--hl-muted);
+  }
+  .form-title {
+    margin: 0 0 12px;
+    font-size: 16px;
+  }
+  .muted {
+    color: var(--hl-muted);
   }
   .timeline {
     display: grid;
