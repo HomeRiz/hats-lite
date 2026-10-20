@@ -1,7 +1,7 @@
 import { LitElement, html, nothing, type PropertyValues } from "lit";
 import type { PanelHass } from "./contract";
 import { errorCode, fetchMods, filterMods, MOD_KINDS, type KindFilter, type ModEntry, type ModFilter } from "./modsData";
-import "./modsPreview";
+import "./modsDialog";
 import { renderModLinks } from "./modsPreview";
 import { modsStyles } from "./modsStyles";
 import { modsErrorMessage, stringsMods as s } from "./strings.mods";
@@ -9,7 +9,6 @@ import { modsErrorMessage, stringsMods as s } from "./strings.mods";
 const FILTERS: readonly [ModFilter, string][] = [
   ["all", s.filterAll],
   ["installed", s.filterInstalled],
-  ["pinned", s.filterPinned],
 ];
 
 export class HatsLiteMods extends LitElement {
@@ -57,15 +56,23 @@ export class HatsLiteMods extends LitElement {
     }
   }
 
+  private closeDialog = (): void => {
+    const name = this.selected;
+    this.selected = "";
+    void this.updateComplete.then(() => {
+      const items = Array.from(this.renderRoot.querySelectorAll<HTMLElement>("[data-name]"));
+      items.find((li) => li.dataset.name === name)?.querySelector<HTMLElement>(".pick")?.focus();
+    });
+  };
+
   private renderItem(mod: ModEntry) {
-    const open = this.selected === mod.full_name;
     return html`
       <li class="mod" data-name=${mod.full_name}>
         <div class="head">
           <button
             class="pick"
             type="button"
-            aria-pressed=${open ? "true" : "false"}
+            aria-haspopup="dialog"
             aria-label=${s.select(mod.full_name)}
             @click=${() => {
               this.selected = mod.full_name;
@@ -150,17 +157,13 @@ export class HatsLiteMods extends LitElement {
     const mod = this.mods.find((m) => m.full_name === this.selected) ?? null;
     return html`
       <p class="muted">${s.intro}</p>
-      <div class="layout">
-        <section class="card" aria-labelledby="mods-h">
-          <h2 id="mods-h">${s.title}</h2>
-          ${this.renderList()}
-        </section>
-        <section class="card" aria-label=${s.detailsTitle}>
-          ${this.active
-            ? html`<hats-lite-mods-preview .hass=${this.hass} .mod=${mod}></hats-lite-mods-preview>`
-            : nothing}
-        </section>
-      </div>
+      <section class="card" aria-labelledby="mods-h">
+        <h2 id="mods-h">${s.title}</h2>
+        ${this.renderList()}
+      </section>
+      ${this.active && mod
+        ? html`<hats-lite-mods-dialog .hass=${this.hass} .mod=${mod} @close=${this.closeDialog}></hats-lite-mods-dialog>`
+        : nothing}
     `;
   }
 }

@@ -107,7 +107,6 @@ describe("modsData", () => {
     ];
     expect(filterMods(list, "gauge", "all").map((m) => m.full_name)).toEqual(["o/alpha"]);
     expect(filterMods(list, "", "installed").length).toBe(1);
-    expect(filterMods(list, "", "pinned")[0].full_name).toBe("o/beta");
     expect(filterMods(list, "BETA", "all").length).toBe(1);
   });
 

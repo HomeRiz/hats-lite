@@ -32,17 +32,35 @@ function makeHass(handlers: Record<string, (msg: Call) => unknown> = {}): PanelH
   return { connection: { sendMessagePromise: send, subscribeMessage: vi.fn() }, themes: {} } as unknown as PanelHass;
 }
 
+function dialog(): HTMLElement | null {
+  return el.shadowRoot?.querySelector("hats-lite-mods-dialog") ?? null;
+}
+
+function preview(): HatsLiteModsPreview | null {
+  const p = dialog()?.shadowRoot?.querySelector<HatsLiteModsPreview>("hats-lite-mods-preview") ?? null;
+  if (p && !patched.has(p)) {
+    patched.add(p);
+    p.createSandbox = (options) => {
+      const record = { options, destroy: vi.fn(), update: vi.fn() };
+      sandboxes.push(record);
+      return { element: document.createElement("iframe"), update: record.update, destroy: record.destroy };
+    };
+    p.cardFactory = async () => document.createElement("div");
+  }
+  return p;
+}
+
+const patched = new WeakSet<object>();
+
 async function settle(): Promise<void> {
   for (let i = 0; i < 8; i += 1) {
     await Promise.resolve();
     await el.updateComplete;
+    const d = dialog() as (HTMLElement & { updateComplete?: Promise<unknown> }) | null;
+    if (d) await d.updateComplete;
     const p = preview();
     if (p) await p.updateComplete;
   }
-}
-
-function preview(): HatsLiteModsPreview | null {
-  return el.shadowRoot?.querySelector("hats-lite-mods-preview") ?? null;
 }
 
 function pv<T extends Element>(selector: string): T | null {
@@ -54,15 +72,6 @@ async function mount(hass: PanelHass): Promise<void> {
   el.hass = hass;
   document.body.append(el);
   await settle();
-  const p = preview();
-  if (p) {
-    p.createSandbox = (options) => {
-      const record = { options, destroy: vi.fn(), update: vi.fn() };
-      sandboxes.push(record);
-      return { element: document.createElement("iframe"), update: record.update, destroy: record.destroy };
-    };
-    p.cardFactory = async () => document.createElement("div");
-  }
 }
 
 async function pick(name: string): Promise<void> {
@@ -117,9 +126,7 @@ describe("hats-lite-mods list", () => {
     el.shadowRoot!.querySelector<HTMLButtonElement>('[data-filter="installed"]')!.click();
     await settle();
     expect(el.shadowRoot!.querySelectorAll("li.mod").length).toBe(1);
-    el.shadowRoot!.querySelector<HTMLButtonElement>('[data-filter="pinned"]')!.click();
-    await settle();
-    expect(el.shadowRoot!.querySelectorAll("li.mod").length).toBe(2);
+    expect(el.shadowRoot!.querySelector('[data-filter="pinned"]')).toBeNull();
   });
 
   it("shows the truncated notice", async () => {
@@ -169,7 +176,7 @@ describe("hats-lite-mods preview", () => {
     await pick("o/beta");
     const area = pv<HTMLTextAreaElement>("#config")!;
     expect(JSON.parse(area.value)).toEqual({ type: "custom:beta-card" });
-    click("#run");
+    click("#run-own");
     await settle();
     expect(pv("#isolation")?.textContent).toBe(ISOLATION_NOTE);
     expect(pv("#disclosure")?.textContent).toBe(DISCLOSURE);
@@ -190,14 +197,14 @@ describe("hats-lite-mods preview", () => {
   it("remembers consent for the session", async () => {
     await mount(makeHass());
     await pick("o/beta");
-    click("#run");
+    click("#run-own");
     await settle();
     click("#confirm");
     await settle();
     click("#reset");
     await settle();
     expect(sandboxes[0].destroy).toHaveBeenCalled();
-    click("#run");
+    click("#run-own");
     await settle();
     expect(pv("#confirm")).toBeNull();
     expect(sandboxes.length).toBe(2);
@@ -207,13 +214,13 @@ describe("hats-lite-mods preview", () => {
     const delta = { full_name: "o/delta", description: "Another", stars: 2, installed: false, pinned: true, filename: "delta-card.js", license: "MIT", tag: "delta-card" };
     await mount(makeHass({ "hats_lite/mods": () => ({ source: "c", mods: [...MODS, delta], truncated: false }) }));
     await pick("o/beta");
-    click("#run");
+    click("#run-own");
     await settle();
     click("#confirm");
     await settle();
     expect(calls.filter((c) => c.type === "hats_lite/mod_asset").length).toBe(1);
     await pick("o/delta");
-    click("#run");
+    click("#run-own");
     await settle();
     expect(pv("#confirm")).not.toBeNull();
     expect(calls.filter((c) => c.type === "hats_lite/mod_asset").length).toBe(1);
@@ -224,7 +231,7 @@ describe("hats-lite-mods preview", () => {
       full_name: "o/delta",
     });
     await pick("o/beta");
-    click("#run");
+    click("#run-own");
     await settle();
     expect(pv("#confirm")).toBeNull();
   });
@@ -238,7 +245,7 @@ describe("hats-lite-mods preview", () => {
     });
     await mount(makeHass({ "hats_lite/mods": mods }));
     await pick("O/Beta");
-    click("#run");
+    click("#run-own");
     await settle();
     click("#confirm");
     await settle();
@@ -246,7 +253,7 @@ describe("hats-lite-mods preview", () => {
     tag = "beta-card-two";
     await mount(makeHass({ "hats_lite/mods": mods }));
     await pick("O/Beta");
-    click("#run");
+    click("#run-own");
     await settle();
     expect(pv("#confirm")).not.toBeNull();
   });
@@ -254,7 +261,7 @@ describe("hats-lite-mods preview", () => {
   it("moves focus to the confirm heading and exposes a labelled region", async () => {
     await mount(makeHass());
     await pick("o/beta");
-    click("#run");
+    click("#run-own");
     await settle();
     const section = pv<HTMLElement>("section.confirm")!;
     expect(section.getAttribute("role")).toBe("region");
@@ -268,18 +275,18 @@ describe("hats-lite-mods preview", () => {
   it("restores focus to Run on cancel and on reset", async () => {
     await mount(makeHass());
     await pick("o/beta");
-    click("#run");
+    click("#run-own");
     await settle();
     click("#cancel");
     await settle();
-    expect(preview()!.shadowRoot!.activeElement).toBe(pv("#run"));
-    click("#run");
+    expect(preview()!.shadowRoot!.activeElement).toBe(pv("#run-own"));
+    click("#run-own");
     await settle();
     click("#confirm");
     await settle();
     click("#reset");
     await settle();
-    expect(preview()!.shadowRoot!.activeElement).toBe(pv("#run"));
+    expect(preview()!.shadowRoot!.activeElement).toBe(pv("#run-own"));
   });
 
   it("rejects an invalid config before anything runs", async () => {
@@ -288,7 +295,7 @@ describe("hats-lite-mods preview", () => {
     const area = pv<HTMLTextAreaElement>("#config")!;
     area.value = "{nope";
     area.dispatchEvent(new Event("input"));
-    click("#run");
+    click("#run-own");
     await settle();
     expect(pv("#config-problem")?.textContent).toContain(s.configProblems.invalid);
     expect(pv("#confirm")).toBeNull();
@@ -297,7 +304,7 @@ describe("hats-lite-mods preview", () => {
   it("maps sandbox and asset errors and resets", async () => {
     await mount(makeHass());
     await pick("o/beta");
-    click("#run");
+    click("#run-own");
     await settle();
     click("#confirm");
     await settle();
@@ -306,7 +313,7 @@ describe("hats-lite-mods preview", () => {
     expect(pv("#failure")?.textContent).toBe(s.errors.timeout);
     click("#reset");
     await settle();
-    expect(pv("#run")).not.toBeNull();
+    expect(pv("#run-own")).not.toBeNull();
   });
 
   it("maps every sandbox error code to a message", async () => {
@@ -324,7 +331,7 @@ describe("hats-lite-mods preview", () => {
       }),
     );
     await pick("o/beta");
-    click("#run");
+    click("#run-own");
     await settle();
     click("#confirm");
     await settle();
@@ -335,7 +342,7 @@ describe("hats-lite-mods preview", () => {
   it("destroys the sandbox when another mod is selected", async () => {
     await mount(makeHass());
     await pick("o/beta");
-    click("#run");
+    click("#run-own");
     await settle();
     click("#confirm");
     await settle();
@@ -346,7 +353,7 @@ describe("hats-lite-mods preview", () => {
   it("destroys the sandbox when the element disconnects", async () => {
     await mount(makeHass());
     await pick("o/beta");
-    click("#run");
+    click("#run-own");
     await settle();
     click("#confirm");
     await settle();
@@ -357,7 +364,7 @@ describe("hats-lite-mods preview", () => {
   it("destroys the sandbox when the tab becomes inactive", async () => {
     await mount(makeHass());
     await pick("o/beta");
-    click("#run");
+    click("#run-own");
     await settle();
     click("#confirm");
     await settle();
@@ -369,7 +376,7 @@ describe("hats-lite-mods preview", () => {
   it("forwards hass updates to the sandbox and the width presets", async () => {
     await mount(makeHass());
     await pick("o/beta");
-    click("#run");
+    click("#run-own");
     await settle();
     click("#confirm");
     await settle();

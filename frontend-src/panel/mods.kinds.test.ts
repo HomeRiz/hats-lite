@@ -28,13 +28,15 @@ function makeHass(): PanelHass {
 }
 
 function preview(): HatsLiteModsPreview | null {
-  return el.shadowRoot?.querySelector("hats-lite-mods-preview") ?? null;
+  return el.shadowRoot?.querySelector("hats-lite-mods-dialog")?.shadowRoot?.querySelector<HatsLiteModsPreview>("hats-lite-mods-preview") ?? null;
 }
 
 async function settle(): Promise<void> {
   for (let i = 0; i < 8; i += 1) {
     await Promise.resolve();
     await el.updateComplete;
+    const d = el.shadowRoot?.querySelector("hats-lite-mods-dialog") as (HTMLElement & { updateComplete?: Promise<unknown> }) | null;
+    if (d) await d.updateComplete;
     const p = preview();
     if (p) await p.updateComplete;
   }
@@ -122,7 +124,7 @@ describe("hats-lite-mods kinds", () => {
 
   it("still previews pinned plugins", async () => {
     await pick("o/styler");
-    expect(pv("#run")).not.toBeNull();
+    expect(pv("#run-own")).not.toBeNull();
     expect(pv("#integration-note")).toBeNull();
   });
 });

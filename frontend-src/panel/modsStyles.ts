@@ -13,16 +13,6 @@ export const modsStyles = [
   *::after {
     box-sizing: border-box;
   }
-  .layout {
-    display: grid;
-    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
-    gap: var(--hl-gap);
-  }
-  @media (max-width: 899px) {
-    .layout {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
   .card {
     min-width: 0;
     padding: 16px;
@@ -104,8 +94,15 @@ export const modsStyles = [
     color: var(--hl-text);
     overflow-wrap: anywhere;
   }
-  .pick[aria-pressed="true"] {
-    border-color: var(--hl-accent);
+  .pick {
+    text-decoration: underline;
+  }
+  .advanced {
+    margin-top: 12px;
+  }
+  .advanced summary {
+    cursor: pointer;
+    padding: 8px 0;
   }
   .pick:focus-visible,
   .link:focus-visible {

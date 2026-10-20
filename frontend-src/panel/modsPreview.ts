@@ -14,9 +14,12 @@ import {
 import { modsStyles } from "./modsStyles";
 import { modsErrorMessage, stringsMods as s } from "./strings.mods";
 import { createPreviewCard, loadCardHelpers } from "./previewData";
+import { mockFor, mockHass } from "./modsMockCards";
 
 export type SandboxFactory = (options: SandboxOptions) => Sandbox;
 export type CardFactory = (hass: PanelHass, config: Record<string, unknown>) => Promise<HTMLElement>;
+
+type Target = { tag: string; config: Record<string, unknown>; hass: unknown };
 
 type Phase = "idle" | "confirm" | "fetching" | "starting" | "running" | "error";
 
@@ -83,6 +86,8 @@ export class HatsLiteModsPreview extends LitElement {
   private sandbox: Sandbox | null = null;
   private card: HTMLElement | null = null;
   private token = 0;
+  private own = false;
+  private pending: Target | null = null;
   private focusTarget: "confirm" | "run" | null = null;
 
   disconnectedCallback(): void {
@@ -101,11 +106,25 @@ export class HatsLiteModsPreview extends LitElement {
     }
   }
 
+  private mockTarget(): Target | null {
+    const mod = this.mod;
+    if (!mod || !this.hass) return null;
+    const mock = mockFor(mod);
+    return { tag: mock.tag ?? "", config: mock.config, hass: mockHass(this.hass) };
+  }
+
+  private ownTarget(): Target | null {
+    const parsed = parseConfig(this.configText);
+    if (!parsed.ok || !this.hass) return null;
+    return { tag: parsed.tag, config: parsed.config, hass: this.hass };
+  }
+
   protected updated(changed: PropertyValues): void {
-    if (changed.has("mod") && this.mod?.installed) void this.showInstalled();
+    if (changed.has("mod") && this.mod?.installed && this.mod.category === "plugin") {
+      void this.showInstalled(this.mockTarget());
+    }
     if (changed.has("hass") && this.hass) {
-      this.sandbox?.update(this.hass);
-      if (this.card) (this.card as HTMLElement & { hass?: unknown }).hass = this.hass;
+      if (this.sandbox) this.sandbox.update(this.own ? this.hass : mockHass(this.hass));
     }
     const stage = this.stage();
     if (stage && this.sandbox && this.sandbox.element.parentNode !== stage) stage.append(this.sandbox.element);
@@ -116,7 +135,7 @@ export class HatsLiteModsPreview extends LitElement {
   private applyFocus(): void {
     const target = this.focusTarget;
     if (!target) return;
-    const el = this.renderRoot.querySelector<HTMLElement>(target === "confirm" ? "#confirm-h" : "#run");
+    const el = this.renderRoot.querySelector<HTMLElement>(target === "confirm" ? "#confirm-h" : "#run, #run-own");
     if (!el) return;
     this.focusTarget = null;
     el.focus();
@@ -143,22 +162,22 @@ export class HatsLiteModsPreview extends LitElement {
     this.card = null;
   }
 
-  private async showInstalled(): Promise<void> {
-    const parsed = parseConfig(this.configText);
-    if (!parsed.ok || !this.hass) return;
+  private async showInstalled(target: Target | null): Promise<void> {
+    if (!target) return;
+    this.own = target.hass === this.hass;
     const token = ++this.token;
     this.card?.remove();
     this.card = null;
     this.installedFailed = false;
     let el: HTMLElement;
     try {
-      el = await this.cardFactory(this.hass, parsed.config);
+      el = await this.cardFactory(target.hass as PanelHass, target.config);
     } catch {
       if (token === this.token) this.installedFailed = true;
       return;
     }
     if (token !== this.token) return;
-    (el as HTMLElement & { hass?: unknown }).hass = this.hass;
+    (el as HTMLElement & { hass?: unknown }).hass = target.hass;
     this.card = el;
     await this.updateComplete;
     this.stage()?.append(el);
@@ -170,18 +189,28 @@ export class HatsLiteModsPreview extends LitElement {
   };
 
   private onRun = (): void => {
+    this.begin(this.mockTarget());
+  };
+
+  private onRunOwn = (): void => {
     const parsed = parseConfig(this.configText);
     if (!parsed.ok) {
       this.problem = parsed.problem;
       return;
     }
+    this.begin(this.ownTarget());
+  };
+
+  private begin(target: Target | null): void {
+    if (!target) return;
+    this.pending = target;
     this.problem = "";
     if (this.mod && consented.has(consentKey(this.mod))) void this.start();
     else {
       this.focusTarget = "confirm";
       this.phase = "confirm";
     }
-  };
+  }
 
   private onConfirm = (): void => {
     if (this.mod) consented.add(consentKey(this.mod));
@@ -209,8 +238,9 @@ export class HatsLiteModsPreview extends LitElement {
   private async start(): Promise<void> {
     const mod = this.mod;
     const hass = this.hass;
-    const parsed = parseConfig(this.configText);
-    if (!mod || !hass || !parsed.ok) return;
+    const target = this.pending;
+    if (!mod || !hass || !target) return;
+    this.own = target.hass === hass;
     this.stop();
     const token = this.token;
     this.phase = "fetching";
@@ -225,9 +255,9 @@ export class HatsLiteModsPreview extends LitElement {
     this.phase = "starting";
     this.sandbox = this.createSandbox({
       modSource: source,
-      tag: parsed.tag,
-      config: parsed.config,
-      hass,
+      tag: target.tag,
+      config: target.config,
+      hass: target.hass,
       onReady: () => {
         if (token === this.token) this.phase = "running";
       },
@@ -237,25 +267,28 @@ export class HatsLiteModsPreview extends LitElement {
     });
   }
 
-  private renderEditor(label: string, action: () => void, primary: string) {
+  private renderAdvanced(label: string, action: () => void, primary: string) {
     return html`
-      <label class="field">
-        <span>${s.configLabel}</span>
-        <textarea
-          id="config"
-          rows="5"
-          spellcheck="false"
-          .value=${this.configText}
-          @input=${this.onConfigInput}
-        ></textarea>
-      </label>
-      <p class="muted">${s.configHelp}</p>
-      ${this.problem
-        ? html`<p class="notice error" id="config-problem" role="alert">${s.configProblems[this.problem] ?? this.problem}</p>`
-        : nothing}
-      <div class="tools">
-        <button class="btn primary" type="button" id=${primary} aria-label=${label} @click=${action}>${label}</button>
-      </div>
+      <details class="advanced" id="advanced">
+        <summary>${s.advancedTitle}</summary>
+        <label class="field">
+          <span>${s.configLabel}</span>
+          <textarea
+            id="config"
+            rows="5"
+            spellcheck="false"
+            .value=${this.configText}
+            @input=${this.onConfigInput}
+          ></textarea>
+        </label>
+        <p class="muted">${s.configHelp}</p>
+        ${this.problem
+          ? html`<p class="notice error" id="config-problem" role="alert">${s.configProblems[this.problem] ?? this.problem}</p>`
+          : nothing}
+        <div class="tools">
+          <button class="btn" type="button" id=${primary} aria-label=${label} @click=${action}>${label}</button>
+        </div>
+      </details>
     `;
   }
 
@@ -281,7 +314,16 @@ export class HatsLiteModsPreview extends LitElement {
 
   private renderSandbox() {
     const busy = this.phase === "fetching" || this.phase === "starting";
-    if (this.phase === "idle") return this.renderEditor(s.run, this.onRun, "run");
+    if (this.phase === "idle") {
+      const mock = this.mod ? mockFor(this.mod) : null;
+      return html`
+        <p class="muted" id="mock-summary">${mock?.summary}</p>
+        ${mock?.tag
+          ? html`<div class="tools"><button class="btn primary" type="button" id="run" @click=${this.onRun}>${s.run}</button></div>`
+          : html`<p class="notice" id="no-mock">${s.noLiveMock}</p>`}
+        ${this.renderAdvanced(s.runOwn, this.onRunOwn, "run-own")}
+      `;
+    }
     if (this.phase === "confirm") {
       return html`
         <section class="confirm" role="region" aria-labelledby="confirm-h">
@@ -320,8 +362,9 @@ export class HatsLiteModsPreview extends LitElement {
         <p class="notice" id="installed-note">${s.installedNote}</p>
         <p class="muted">${s.installedHint}</p>
         ${this.installedFailed ? html`<p class="notice error" id="installed-failed" role="alert">${s.installedUnavailable}</p>` : nothing}
-        ${this.renderEditor(s.showCard, () => void this.showInstalled(), "show-card")}
+        <p class="muted" id="mock-summary">${this.mod ? mockFor(this.mod).summary : ""}</p>
         <div class="stage" role="region" aria-label=${s.stageLabel}></div>
+        ${this.renderAdvanced(s.showCard, () => void this.showInstalled(this.ownTarget()), "show-card")}
       `;
     }
     if (!canPreview(mod)) {
@@ -334,7 +377,6 @@ export class HatsLiteModsPreview extends LitElement {
     const mod = this.mod;
     if (!mod) return html`<p class="muted">${s.nothingSelected}</p>`;
     return html`
-      <h2>${mod.full_name}</h2>
       ${mod.pinned && mod.license ? html`<p class="muted" id="license">${s.license(mod.license)}</p>` : nothing}
       <p class="links">${renderModLinks(mod, true)}</p>
       ${this.renderBody(mod)}

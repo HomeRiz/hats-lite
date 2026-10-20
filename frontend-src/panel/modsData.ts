@@ -26,7 +26,7 @@ export type ModEntry = {
 
 export type ModsResult = { source: string; mods: ModEntry[]; truncated: boolean };
 export type ModAsset = { full_name: string; source: string };
-export type ModFilter = "all" | "installed" | "pinned";
+export type ModFilter = "all" | "installed";
 
 export const MAX_CONFIG_BYTES = 4096;
 
@@ -139,7 +139,6 @@ export function filterMods(mods: ModEntry[], query: string, filter: ModFilter, k
   return mods.filter((m) => {
     if (kind !== "all" && m.kind !== kind) return false;
     if (filter === "installed" && !m.installed) return false;
-    if (filter === "pinned" && !m.pinned) return false;
     if (q === "") return true;
     return m.full_name.toLowerCase().includes(q) || m.description.toLowerCase().includes(q);
   });
