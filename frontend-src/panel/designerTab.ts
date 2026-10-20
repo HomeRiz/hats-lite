@@ -13,7 +13,7 @@ import {
   type ThemeSavedDetail,
 } from "./contract";
 import { baseNames, renderBaseSelect } from "./designerBaseView";
-import { baseMissing, pickBase, baseTheme, buildSaved, skippedCount, type Saved } from "./designerBuild";
+import { baseMissing, pickBase, baseTheme, buildSaved, skippedCount, wallpaperCount, type Saved } from "./designerBuild";
 import { renderModeSection, renderNotices } from "./designerNotices";
 import { renderColorRow, renderRange, renderSaveBar, renderUploadArea } from "./designerControls";
 import { designerStyles } from "./designerStyles";
@@ -111,7 +111,7 @@ export class HatsLiteDesigner extends LitElement {
         <div class="controls">
           <hats-lite-advanced .hass=${this.hass} .draft=${advancedDraft(this)}></hats-lite-advanced>
           ${renderBaseSelect(baseNames(this.hass), this.base, (event) => this.onBase(event))}
-          ${renderNotices(this.baseNotice, skippedCount(this.hass, this.base, this.mode), this.errorField, this.errorMessage)}
+          ${renderNotices(this.baseNotice, skippedCount(this.hass, this.base, this.mode), this.errorField, this.errorMessage, wallpaperCount(this.hass, this.base))}
           <section class="group">
             <h3>${stringsDesigner.colors}</h3>
             ${this.renderColor("main", stringsDesigner.mainColor)}

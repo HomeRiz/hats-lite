@@ -88,6 +88,7 @@ export type ResolvedBase = {
   skipped: number;
   skippedKeys: string[];
   wallpaper: number;
+  wallpaperKeys: string[];
 };
 
 function verdictOf(key: string, value: unknown) {
@@ -99,7 +100,7 @@ function verdictOf(key: string, value: unknown) {
 export function resolveBase(theme: unknown, mode: Mode): ResolvedBase {
   const vars: Record<string, string> = {};
   const outcome = new Map<string, string>();
-  if (!isRecord(theme)) return { vars, skipped: 0, skippedKeys: [], wallpaper: 0 };
+  if (!isRecord(theme)) return { vars, skipped: 0, skippedKeys: [], wallpaper: 0, wallpaperKeys: [] };
   for (const source of [theme, block(theme, mode)]) {
     for (const [key, value] of Object.entries(source)) {
       if (key === "modes") continue;
@@ -110,8 +111,8 @@ export function resolveBase(theme: unknown, mode: Mode): ResolvedBase {
     }
   }
   const skippedKeys = [...outcome].filter(([, verdict]) => verdict === "skip").map(([key]) => key);
-  const wallpaper = [...outcome.values()].filter((verdict) => verdict === "background").length;
-  return { vars, skipped: skippedKeys.length, skippedKeys, wallpaper };
+  const wallpaperKeys = [...outcome].filter(([, verdict]) => verdict === "background").map(([key]) => key);
+  return { vars, skipped: skippedKeys.length, skippedKeys, wallpaper: wallpaperKeys.length, wallpaperKeys };
 }
 
 export function resolveThemeVars(theme: unknown, mode: Mode): Record<string, string> {

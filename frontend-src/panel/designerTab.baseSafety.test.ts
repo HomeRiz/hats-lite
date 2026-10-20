@@ -58,6 +58,13 @@ afterEach(() => {
 });
 
 describe("unsanitized base themes", () => {
+  it("shows the wallpaper removal count", async () => {
+    const { hass } = makeHass({ W: { "primary-color": "#112233", "lovelace-background": "red", x: "url('/a.png')" } });
+    const el = await mount(hass);
+    await choose(el, "W");
+    expect(q(el, '[data-notice="wallpaper"]').textContent).toBe("2 wallpaper entries were removed.");
+  });
+
   it("skips bad variables, shows the count and still saves", async () => {
     const { hass, send } = makeHass({
       Raw: { "primary-color": "#112233", "bad key": "1", flag: true, "card-mod-theme": "@import url(x)", ok: "1" },

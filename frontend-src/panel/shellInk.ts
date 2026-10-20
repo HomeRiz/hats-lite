@@ -1,4 +1,4 @@
-import { black, ensureContrast, flatten, mix, parseColor, readableInk, white, type Rgba } from "./contrast";
+import { black, ensureContrast, flatten, mix, parseColor, readableInkAll, safeInk, white, type Rgba } from "./contrast";
 
 export type InkInput = {
   dark: boolean;
@@ -57,26 +57,30 @@ function visible(value: string): Rgba | null {
 export function computeInk(input: InkInput): InkResult {
   const backdrop: Rgba = input.dark ? black() : white();
   const accent = visible(input.accent);
-  if (!accent) return none();
+  const accentBroken = !accent && input.accent !== "" && parseColor(input.accent) === null;
+  if (!accent && !accentBroken) return none();
   const page = visible(input.bg);
   const pageFlat = page ? flatten(page, backdrop) : null;
   const under = pageFlat ?? backdrop;
   const surfaceColor = visible(input.surface);
   const raisedColor = visible(input.raised);
   const surface = surfaceColor ? flatten(surfaceColor, under) : under;
-  const raised = raisedColor ? flatten(raisedColor, under) : surface;
+  const raised = raisedColor ? flatten(raisedColor, surface) : surface;
   const cards = [surface, raised];
   const pageOnly = [pageFlat ?? surface];
   const everywhere = [...cards, ...(pageFlat ? [pageFlat] : [])];
-  const accentFlat = flatten(accent, surface);
-  const pressed = mix(surface, accentFlat, 0.22);
+  const pressed = accent ? mix(surface, flatten(accent, surface), 0.22) : surface;
   const result = none();
 
-  result["--hl-on-accent"] = readableInk(accentFlat, parseColor(input.accentInk), TEXT);
+  if (accent) {
+    const onAccent = everywhere.map((backdropColor) => flatten(accent, backdropColor));
+    result["--hl-on-accent"] = readableInkAll(onAccent, parseColor(input.accentInk), TEXT);
+  }
 
   const fix = (key: string, value: string, backgrounds: Rgba[], min: number) => {
     const color = parseColor(value);
-    result[key] = color ? ensureContrast(color, backgrounds, min) : null;
+    if (color) result[key] = ensureContrast(color, backgrounds, min);
+    else result[key] = value === "" ? null : safeInk(backgrounds);
   };
   fix("--hl-text-ink", input.text, [...everywhere, pressed], TEXT);
   fix("--hl-muted-ink", input.muted, everywhere, TEXT);

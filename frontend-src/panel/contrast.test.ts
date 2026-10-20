@@ -7,6 +7,8 @@ import {
   minRatio,
   parseColor,
   readableInk,
+  readableInkAll,
+  safeInk,
   toHex,
   type Rgba,
 } from "./contrast";
@@ -96,6 +98,24 @@ describe("readableInk", () => {
       const ink = readableInk(bg, null);
       expect(contrastRatio(c(ink), bg)).toBeGreaterThanOrEqual(4.5);
     }
+  });
+});
+
+describe("readableInkAll and safeInk", () => {
+  it("keeps the preferred ink only when it passes on every backdrop", () => {
+    expect(readableInkAll([c("#ffffff"), c("#f0f0f0")], c("#101010"))).toBe("#101010");
+    expect(readableInkAll([c("#ffffff"), c("#404040")], c("#101010"))).toBe("#000000");
+  });
+
+  it("falls back to the black or white with the better worst case", () => {
+    expect(readableInkAll([c("#000000"), c("#303030")], null)).toBe("#ffffff");
+    expect(readableInkAll([c("#ffffff"), c("#d0d0d0")], null)).toBe("#000000");
+    expect(safeInk([c("#ffffff")])).toBe("#000000");
+    expect(safeInk([c("#000000")])).toBe("#ffffff");
+  });
+
+  it("agrees with readableInk for a single backdrop", () => {
+    expect(readableInkAll([c("#ffd000")], c("#ffffff"))).toBe(readableInk(c("#ffd000"), c("#ffffff")));
   });
 });
 

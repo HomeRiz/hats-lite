@@ -124,7 +124,7 @@ describe("other accents", () => {
     expect(ratio(fixed, "rgb(120, 120, 120)")).toBeGreaterThanOrEqual(4.5);
   });
 
-  it("composites a translucent surface and raised over the page background, not the bare backdrop", () => {
+  it("composites a translucent surface over the page background, not the bare backdrop", () => {
     const glass = {
       ...hass,
       dark: true,
@@ -139,6 +139,56 @@ describe("other accents", () => {
     const fixedText = out["--hl-text-ink"];
     const ink = fixedText ? c(fixedText) : c(glass.text);
     expect(contrastRatio(ink, rendered)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("composites a translucent raised card over the surface it is drawn on", () => {
+    const stacked = {
+      ...hass,
+      dark: false,
+      bg: "rgb(255, 255, 255)",
+      surface: "rgb(230, 230, 230)",
+      raised: "rgba(0, 0, 0, 0.1)",
+      text: "rgb(118, 118, 118)",
+      muted: "rgb(118, 118, 118)",
+    };
+    const out = computeInk(stacked);
+    const raisedOnSurface = { r: 207, g: 207, b: 207, a: 1 };
+    const ink = c((out["--hl-text-ink"] ?? stacked.text) as string);
+    expect(contrastRatio(ink, raisedOnSurface)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(ink, c(stacked.bg))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("picks an on-accent ink that reads on the accent over every backdrop, not only the surface", () => {
+    const sheer = {
+      ...hass,
+      dark: true,
+      bg: "rgb(0, 0, 0)",
+      surface: "rgb(255, 255, 255)",
+      raised: "rgb(255, 255, 255)",
+      accent: "rgba(0, 0, 0, 0.5)",
+      accentInk: "rgb(0, 0, 0)",
+    };
+    expect(computeInk(sheer)["--hl-on-accent"]).toBe("#ffffff");
+  });
+
+  it("falls back to a known-good ink when a color cannot be parsed", () => {
+    const out = computeInk({ ...hass, text: "unparseable", muted: "rgb(a b c)", ok: "unparseable", warn: "unparseable", line: "unparseable" });
+    for (const key of ["--hl-text-ink", "--hl-muted-ink", "--hl-ok-ink", "--hl-warn-ink", "--hl-edge-ink"]) {
+      expect(["#000000", "#ffffff"]).toContain(out[key]);
+    }
+    expect(out["--hl-text-ink"]).toBe("#ffffff");
+    expect(out["--hl-bg-text-ink"]).toBe("#ffffff");
+  });
+
+  it("keeps an unset color unset and never invents ink for it", () => {
+    expect(computeInk({ ...hass, text: "" })["--hl-text-ink"]).toBeNull();
+  });
+
+  it("still computes the other ink when the accent cannot be parsed", () => {
+    const out = computeInk({ ...hass, accent: "unparseable", text: "rgb(20, 20, 20)" });
+    expect(out["--hl-on-accent"]).toBeNull();
+    expect(out["--hl-accent-text-ink"]).toBe("#ffffff");
+    expect(ratio(out["--hl-text-ink"] as string, hass.bg)).toBeGreaterThanOrEqual(4.5);
   });
 
   it("checks page level and card level tokens on the backgrounds they sit on", () => {

@@ -1,7 +1,7 @@
 import { LitElement } from "lit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PanelHass } from "./contract";
-import { InkController, resetInkCanvas, toSrgb } from "./inkController";
+import { InkController, resetInkCanvas, toSrgb, UNPARSEABLE } from "./inkController";
 import { INK_SOURCES } from "./shellInk";
 
 type Palette = Record<string, string>;
@@ -150,9 +150,39 @@ describe("toSrgb", () => {
     expect(toSrgb("lab(50% 20 30 / 0)")).toBe("");
   });
 
+  it("flags a color the canvas cannot parse instead of reading the sentinel as black", () => {
+    const state = { sentinel: "", style: "#000000" };
+    const ctx = {
+      clearRect: vi.fn(),
+      fillRect: vi.fn(),
+      getImageData: () => ({ data: state.style === "#000000" ? [0, 0, 0, 255] : [255, 255, 255, 255] }),
+      set fillStyle(v: string) {
+        if (v === "#000000" || v === "#ffffff") state.style = v;
+      },
+    };
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(ctx as unknown as RenderingContext);
+    resetInkCanvas();
+    expect(toSrgb("not-a-color")).toBe(UNPARSEABLE);
+  });
+
   it("returns the value unchanged when no canvas is available", () => {
     withCanvas(null);
     expect(toSrgb("lab(50% 20 30)")).toBe("lab(50% 20 30)");
+  });
+});
+
+describe("InkController with an unparseable color", () => {
+  it("applies a known-good ink instead of trusting the broken text color", async () => {
+    palette = { ...VINTAGE, text: "not-a-color", bg: "rgb(10, 10, 10)", surface: "rgb(20, 20, 20)", raised: "rgb(30, 30, 30)" };
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      clearRect: vi.fn(),
+      fillRect: vi.fn(),
+      fillStyle: "",
+      getImageData: vi.fn().mockReturnValueOnce({ data: [0, 0, 0, 255] }).mockReturnValueOnce({ data: [255, 255, 255, 255] }),
+    } as unknown as RenderingContext);
+    resetInkCanvas();
+    const el = await mount(hassOf("a"));
+    expect(el.style.getPropertyValue("--hl-text-ink")).toBe("#ffffff");
   });
 });
 

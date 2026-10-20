@@ -177,9 +177,20 @@ export function toHex(c: Rgba): string {
   return `#${h(c.r)}${h(c.g)}${h(c.b)}`;
 }
 
+export function safeInk(backgrounds: Rgba[]): string {
+  return minRatio(BLACK, backgrounds) >= minRatio(WHITE, backgrounds) ? "#000000" : "#ffffff";
+}
+
+export function readableInkAll(backgrounds: Rgba[], preferred: Rgba | null, min = 4.5): string {
+  if (preferred && backgrounds.length > 0) {
+    const own = flatten(preferred, backgrounds[0]);
+    if (backgrounds.every((bg) => contrastRatio(own, bg) >= min)) return toHex(own);
+  }
+  return safeInk(backgrounds);
+}
+
 export function readableInk(bg: Rgba, preferred: Rgba | null, min = 4.5): string {
-  if (preferred && contrastRatio(flatten(preferred, bg), bg) >= min) return toHex(flatten(preferred, bg));
-  return contrastRatio(BLACK, bg) >= contrastRatio(WHITE, bg) ? "#000000" : "#ffffff";
+  return readableInkAll([bg], preferred, min);
 }
 
 type Path = { found: Rgba | null; best: Rgba; bestRatio: number };

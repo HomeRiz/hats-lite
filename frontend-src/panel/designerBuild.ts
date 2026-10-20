@@ -27,6 +27,14 @@ export function skippedCount(hass: PanelHass | undefined, base: string, _mode?: 
   return keys.size;
 }
 
+export function wallpaperCount(hass: PanelHass | undefined, base: string): number {
+  if (!base || baseMissing(hass, base)) return 0;
+  const theme = hass?.themes?.themes?.[base];
+  const keys = new Set<string>();
+  for (const mode of emittedModes(theme)) resolveBase(theme, mode).wallpaperKeys.forEach((key) => keys.add(key));
+  return keys.size;
+}
+
 export function buildSaved(theme: unknown, make: (mode: Mode) => Record<string, string>): Saved {
   const flavors: Mode[] = theme ? emittedModes(theme) : ["dark", "light"];
   const modes: Saved["modes"] = {};

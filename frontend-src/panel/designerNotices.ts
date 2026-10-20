@@ -1,11 +1,14 @@
 import { html, nothing, type TemplateResult } from "lit";
 import { stringsDesigner } from "./strings.designer";
 
-export function renderNotices(baseNotice: string, skipped: number, errorField: string, errorMessage: string): TemplateResult {
+export function renderNotices(baseNotice: string, skipped: number, errorField: string, errorMessage: string, wallpaper = 0): TemplateResult {
   return html`
     ${baseNotice ? html`<p class="hint" data-notice="base">${baseNotice}</p>` : nothing}
     ${skipped > 0
       ? html`<p class="hint" data-notice="skipped">${stringsDesigner.baseSkipped.replace("{count}", String(skipped))}</p>`
+      : nothing}
+    ${wallpaper > 0
+      ? html`<p class="hint" data-notice="wallpaper">${wallpaper === 1 ? stringsDesigner.wallpaperOne : stringsDesigner.wallpaperMany.replace("{count}", String(wallpaper))}</p>`
       : nothing}
     ${errorField === "" && errorMessage ? html`<p class="error" role="alert">${errorMessage}</p>` : nothing}
   `;

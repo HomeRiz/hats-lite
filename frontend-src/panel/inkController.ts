@@ -30,17 +30,25 @@ export function resetInkCanvas(): void {
   canvasContext = undefined;
 }
 
+export const UNPARSEABLE = "unparseable";
+
+function paint(ctx: CanvasRenderingContext2D, sentinel: string, value: string): number[] {
+  ctx.clearRect(0, 0, 1, 1);
+  ctx.fillStyle = sentinel;
+  ctx.fillStyle = value;
+  ctx.fillRect(0, 0, 1, 1);
+  return Array.from(ctx.getImageData(0, 0, 1, 1).data);
+}
+
 export function toSrgb(value: string): string {
   if (value === "transparent") return "";
   if (value === "" || SRGB_FORM.test(value)) return value;
   const ctx = context();
   if (!ctx) return value;
   try {
-    ctx.clearRect(0, 0, 1, 1);
-    ctx.fillStyle = "#000000";
-    ctx.fillStyle = value;
-    ctx.fillRect(0, 0, 1, 1);
-    const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
+    const [r, g, b, a] = paint(ctx, "#000000", value);
+    const other = paint(ctx, "#ffffff", value);
+    if (other.some((v, i) => v !== [r, g, b, a][i])) return UNPARSEABLE;
     if (a === 0) return "";
     return `rgba(${r}, ${g}, ${b}, ${Math.round((a / 255) * 1000) / 1000})`;
   } catch {
