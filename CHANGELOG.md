@@ -23,6 +23,15 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 - Background uploads are checked by file structure and size, the folder keeps the 20 most recent files that no saved theme uses, and saving refuses reserved and already used theme names.
 - The preview read only hass allows synchronous read helpers, limits subscriptions to read commands and releases them when the preview closes; events a card dispatches inside the preview no longer reach the Home Assistant frontend.
 - The designer computes text contrast on the composited glass card, the tint slider uses its whole range, and low contrast main and accent colors show a hint.
+- The designer shows how many wallpaper entries were removed from a starting theme.
+- Text colors on the accent are checked against every backdrop, translucent cards are measured over the surface they sit on, and colors the browser cannot parse fall back to a readable black or white.
+- The until time in the people form resolves skipped and repeated hours around clock changes the same way on both sides of UTC.
+- Reading a domain in a full render (states.sensor) now counts against the render budget for every entity scanned.
+- The gallery has no separate Dark and Light switch any more: the Dark and Light filters set the preview mode, and the filter row keeps its last chip fully visible on narrow screens.
+- The preview no longer comes up empty when it is opened first with no theme and a theme is then chosen from the gallery.
+- Mods open in an accessible dialog with focus trapping and Escape to close. It previews a built in example card on a mock Home Assistant with no access to the real one, with running your own card config under Advanced. The Pinned filter is removed.
+- The holiday editor is a list with add, edit and remove for one item at a time. Events (a birthday or a family occasion) can be added next to holidays, with an optional one time year. Adding a preset no longer renames the selected holiday, and helper themes marked do not use or modify are hidden from the theme pickers.
+- Assigning from a calendar day pre-selects that day's theme and mode instead of the default theme.
 - The thumbnail workflow renders in a read only job and opens the pull request from a separate job, with pinned actions, a host allowlist for wallpapers and a sanity floor on the catalog size.
 
 ### Fixed
