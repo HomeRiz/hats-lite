@@ -590,7 +590,7 @@ var Bt=globalThis,Ut=Bt.ShadowRoot&&(Bt.ShadyCSS===void 0||Bt.ShadyCSS.nativeSha
     padding: 2px 10px;
     min-height: 24px;
     border-radius: var(--hl-radius-pill);
-    border: 1px solid var(--hl-edge);
+    border: 1px solid var(--hl-line);
     color: var(--hl-muted);
     font-size: 12px;
     background: transparent;
@@ -2514,7 +2514,7 @@ var Bt=globalThis,Ut=Bt.ShadowRoot&&(Bt.ShadyCSS===void 0||Bt.ShadyCSS.nativeSha
   .notice {
     padding: 8px 12px;
     border-radius: var(--hl-radius-sm);
-    border: 1px solid var(--hl-edge);
+    border: 1px solid var(--hl-line);
   }
   .notice.error {
     color: var(--hl-warn-text);

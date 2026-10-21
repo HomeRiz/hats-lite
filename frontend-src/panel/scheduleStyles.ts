@@ -46,7 +46,7 @@ export const scheduleStyles = [
   .notice {
     padding: 8px 12px;
     border-radius: var(--hl-radius-sm);
-    border: 1px solid var(--hl-edge);
+    border: 1px solid var(--hl-line);
   }
   .notice.error {
     color: var(--hl-warn-text);
