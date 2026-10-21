@@ -4,8 +4,6 @@ import { phoneMedia, watchPhoneViewport } from "./viewport";
 
 installKeyboardInset();
 
-const FOCUSABLE = "select, input, button:not([disabled]), a[href]";
-
 export class HatsLiteSheet extends LitElement {
   static properties = {
     open: { type: Boolean, reflect: true },
@@ -64,6 +62,9 @@ export class HatsLiteSheet extends LitElement {
       .sheet {
         display: none;
       }
+      .sheet:focus {
+        outline: none;
+      }
       :host([open]) .sheet {
         display: flex;
         flex-direction: column;
@@ -110,7 +111,7 @@ export class HatsLiteSheet extends LitElement {
     if (this.open) return this.close(false);
     this.open = true;
     await this.updateComplete;
-    this.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+    this.renderRoot.querySelector<HTMLElement>("#sheet")?.focus();
   }
 
   protected render() {
@@ -118,7 +119,7 @@ export class HatsLiteSheet extends LitElement {
       <button type="button" class="toggle" aria-expanded=${this.open ? "true" : "false"} aria-controls="sheet" @click=${() => this.toggle()}>
         <span>${this.label}</span><span class="chevron" aria-hidden="true"></span>
       </button>
-      <div class="sheet" id="sheet" role="group" aria-label=${this.label}><slot></slot></div>
+      <div class="sheet" id="sheet" role="group" tabindex="-1" aria-label=${this.label}><slot></slot></div>
     `;
   }
 }
