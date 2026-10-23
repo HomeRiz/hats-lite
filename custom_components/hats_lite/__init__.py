@@ -7,7 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from . import api, scheduler, services
+from . import api, real_api, scheduler, services
 from .api_effective import async_listen_user_removed
 from .const import DOMAIN, PANEL_ELEMENT, PANEL_PATH, STATIC_URL
 from .store import LiteStore
@@ -55,6 +55,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not hass.data.get(HTTP_FLAG):
         api.async_register_commands(hass)
         hass.http.register_view(BackgroundUploadView())
+        real_api.async_register(hass)
         if await hass.async_add_executor_job(_prepare_frontend_dir, FRONTEND_DIR):
             await hass.http.async_register_static_paths(
                 [StaticPathConfig(STATIC_URL, FRONTEND_DIR, False)]
