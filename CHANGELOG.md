@@ -44,3 +44,8 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 - The Installed chip now follows the themes Home Assistant has loaded.
 - The options sheet closes when a phone is turned to a wide layout, and the preview action bar sticks only at phone width.
 - The calendar no longer keeps a selected day after a month or person change, shows only the loading state until the first month arrives, and accepts 24:00 only as an end time.
+- A theme render requested twice at the same moment is downloaded only once.
+
+### Security
+
+- 2026-10-26: Updated npm development dependencies and GitHub Actions to the latest releases.
