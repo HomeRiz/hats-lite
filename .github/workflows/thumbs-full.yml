@@ -63,7 +63,7 @@ jobs:
           ssh-key: ${{ secrets.HATS_DEPLOY_KEY }}
           path: hats
           persist-credentials: false
-      - name: Set up Python with actions/setup-python v7.0.0
+      - name: Set up Python with actions/setup-python v7.1.0
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: "3.13"
