@@ -76,7 +76,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm ci --ignore-scripts
         working-directory: hats
-      - name: Cache the HATS vendor folder with actions/cache v5.1.0
+      - name: Cache the HATS vendor folder with actions/cache v6.1.0
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: hats/vendor
