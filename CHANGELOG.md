@@ -37,6 +37,7 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 
 ### Fixed
 
+- Opening the preview options sheet on a phone no longer pops up the dashboard picker.
 - Gauge, sensor and entity cards rendered nothing in the preview.
 - A wallpaper that failed to load made the compared pane transparent.
 - A permanent theme error kept the thumbnail on its skeleton until the retry ended.

@@ -54,12 +54,16 @@ describe("preview controls sheet", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("moves focus into the sheet on open", async () => {
+  it("focuses the sheet container, not its first control, on open", async () => {
     const { el, sheet, toggle } = await mount();
+    const select = sheet.querySelector<HTMLSelectElement>("select")!;
+    const focused = vi.spyOn(select, "focus");
     toggle.click();
     await sheet.updateComplete;
     await Promise.resolve();
-    expect(el.shadowRoot!.activeElement).toBe(sheet.querySelector("select"));
+    expect(focused).not.toHaveBeenCalled();
+    expect(el.shadowRoot!.activeElement).not.toBe(select);
+    expect(sheet.shadowRoot!.activeElement).toBe(sheet.shadowRoot!.querySelector("#sheet"));
   });
 
   it("closes on Escape from inside the sheet and returns focus to the toggle", async () => {
