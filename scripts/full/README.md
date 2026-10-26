@@ -42,7 +42,7 @@ Every action in the workflow is pinned to a full commit SHA. The step names carr
 | actions/checkout | v7.0.1 | 3d3c42e5aac5ba805825da76410c181273ba90b1 |
 | actions/setup-python | v7.0.0 | 5fda3b95a4ea91299a34e894583c3862153e4b97 |
 | actions/setup-node | v7.1.0 | 949feb2413d6458794dcd2491c4babbbce0c15c1 |
-| actions/cache | v5.1.0 | caa296126883cff596d87d8935842f9db880ef25 |
+| actions/cache | v6.1.0 | 55cc8345863c7cc4c66a329aec7e433d2d1c52a9 |
 | actions/upload-artifact | v7.0.2 | cf430e030ddbb5b0abf93d22962f4752f3646cd9 |
 | actions/download-artifact | v8.0.2 | 9000827ccba6bdab643e8b6fd33ac0654aef8333 |
 
