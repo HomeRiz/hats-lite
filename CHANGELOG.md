@@ -14,6 +14,7 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 - Quick designer with background upload and saving a theme file, for administrators.
 - One theme per preview: a repository with many themes in one file is previewed one theme at a time, with a picker for the theme in the file.
 - SECURITY.md with the reporting process and scope.
+- Real renders for every theme: a weekly workflow publishes full renders as release assets of this repository, and the integration downloads them lazily, checks their SHA-256, caches them on disk and serves them to the panel. Until the renders are published the panel keeps the approximate preview.
 - Phone layout: a 44 px divider hit target, safe area padding, bars that stay above the on screen keyboard, segmented tabs, an options sheet for the preview controls and a one column designer with a sticky save bar.
 
 ### Changed

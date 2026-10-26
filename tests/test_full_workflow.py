@@ -44,15 +44,18 @@ def test_triggers_are_dispatch_and_one_weekly_schedule():
     assert on["workflow_dispatch"]["inputs"]["hats_sha"]["required"] is False
 
 
-def test_permissions_are_read_only_everywhere():
+def test_permissions_are_read_only_except_on_the_publish_job():
     data = load()
     assert data["permissions"] == {"contents": "read"}
-    for job in data["jobs"].values():
-        assert "permissions" not in job
+    for name, job in data["jobs"].items():
+        if name == "publish":
+            assert job["permissions"] == {"contents": "write"}
+        else:
+            assert "permissions" not in job
         assert job["runs-on"] == "ubuntu-26.04"
         assert isinstance(job["timeout-minutes"], int)
     assert data["jobs"]["render"]["timeout-minutes"] == 30
-    assert not re.search(r"\bwrite\b", FILE.read_text())
+    assert FILE.read_text().count("contents: write") == 1
 
 
 def test_concurrency_group_and_no_cancel():
@@ -77,15 +80,58 @@ def test_every_action_is_pinned_to_a_full_sha_listed_in_the_readme_table():
         assert step["name"].endswith(f"{name} {table[name][0]}"), step
         used.add(name)
     assert used == set(table)
+    assert "actions/download-artifact" in table
 
 
-def test_nothing_publishes():
+def test_only_the_publish_job_publishes_and_only_releases():
     text = FILE.read_text()
-    for forbidden in ("git commit", "git push", "gh release", "gh pr", "create-pull-request", "gh-pages", "gh api"):
+    for forbidden in ("git commit", "git push", "gh pr", "create-pull-request", "gh-pages", "--method", " -X "):
         assert forbidden not in text
+    jobs = load()["jobs"]
+    for name, job in jobs.items():
+        blob = json.dumps(job)
+        assert ("gh release" in blob) == (name == "publish"), name
     uploads = [s for s in all_steps() if str(s.get("uses", "")).startswith("actions/upload-artifact")]
     assert len(uploads) == 1
     assert uploads[0]["with"]["name"] == "thumbs-full"
+
+
+def test_publish_job_gating_and_environment():
+    job = load()["jobs"]["publish"]
+    assert job["needs"] == "render"
+    assert job["if"] == "needs.render.result == 'success' && github.ref == 'refs/heads/main'"
+    assert job["environment"] == "thumbs-full"
+    assert "secrets" not in json.dumps(job)
+    checkout = next(s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/checkout"))
+    assert checkout["with"]["persist-credentials"] is False
+    download = next(s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/download-artifact"))
+    assert download["with"]["name"] == "thumbs-full"
+
+
+def publish_runs():
+    return [s["run"] for s in steps("publish") if "run" in s]
+
+
+def test_publish_validates_before_creating_or_uploading():
+    runs = publish_runs()
+    at = lambda needle: next(i for i, r in enumerate(runs) if needle in r)
+    assert at("scripts/full/publish.mjs") < at("gh release create") < at("delete-asset") < at("950") < at("gh release upload")
+    assert "--latest=false" in runs[at("gh release create")]
+    assert "gh release view renders" in runs[at("gh release create")]
+    upload = runs[at("gh release upload")]
+    assert upload.count("--clobber") == 2
+    assert upload.index("grep -v") < upload.index("index.json --clobber")
+    assert all("renders" in r for r in runs[1:])
+
+
+def test_gh_token_is_set_only_on_the_steps_that_call_gh():
+    job = load()["jobs"]["publish"]
+    assert "GH_TOKEN" not in job.get("env", {})
+    for step in job["steps"]:
+        calls_gh = "gh " in step.get("run", "")
+        assert ("GH_TOKEN" in step.get("env", {})) == calls_gh, step.get("name")
+        if calls_gh:
+            assert step["env"]["GH_TOKEN"] == "${{ github.token }}"
 
 
 def test_gate_reads_a_repository_variable_and_never_the_secret():
@@ -188,9 +234,12 @@ def test_pin_step_rejects_a_bad_pin_file(tmp_path):
 def test_readme_owner_checklist():
     text = README.read_text()
     assert "\u2014" not in text
-    for needed in ("thumbs-full", "main", "read only", "artifact", "THUMBS_FULL_ENABLED", "HATS_DEPLOY_KEY"):
+    for needed in ("thumbs-full", "main", "read only", "artifact", "THUMBS_FULL_ENABLED", "HATS_DEPLOY_KEY", "contents: write", "renders", "gh release", "immutable", "14 days", "sha256"):
         assert needed in text, needed
     assert "owner" in text.lower()
+    assert "300" in text and "950" in text and "before the upload" in text
+    assert "\n6. " in text and "\n7. " in text
+    assert "\n\n7. " not in text
 
 
 def test_build_steps_run_in_order_in_the_hats_checkout():

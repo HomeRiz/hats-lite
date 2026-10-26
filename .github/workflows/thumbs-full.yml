@@ -114,3 +114,66 @@ jobs:
           path: ${{ runner.temp }}/full-out
           if-no-files-found: error
           retention-days: 7
+
+  publish:
+    needs: render
+    if: needs.render.result == 'success' && github.ref == 'refs/heads/main'
+    environment: thumbs-full
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check out hats-lite with actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up Node with actions/setup-node v7.1.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
+      - name: Download the renders with actions/download-artifact v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: thumbs-full
+          path: ${{ runner.temp }}/full-out
+      - id: stage
+        run: node scripts/full/publish.mjs "$RUNNER_TEMP/full-out" "$RUNNER_TEMP/release"
+      - name: Create the renders release on the first run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view renders > /dev/null 2>&1; then
+            gh release create renders --latest=false --target "$GITHUB_SHA" --title "Real renders" --notes "Full fidelity theme renders for the hats-lite panel."
+          fi
+      - name: Delete stale assets that were last updated more than 14 days ago
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_id="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/renders" --jq .id)"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100" --jq '.[]' > "$RUNNER_TEMP/old-assets.json"
+          node -e 'const fs = require("fs"); const keep = new Set(fs.readdirSync(process.argv[1])); const cutoff = Date.now() - 14 * 86400000; const stale = []; let retained = 0; for (const line of fs.readFileSync(process.argv[2], "utf8").split("\n")) { if (!line.trim()) continue; let a; try { a = JSON.parse(line); } catch { retained += 1; continue; } if (typeof a.name !== "string" || keep.has(a.name)) continue; const t = Date.parse(a.updated_at); if (Number.isFinite(t) && t < cutoff && /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(a.name)) stale.push(a.name); else retained += 1; } fs.writeFileSync(process.argv[3], stale.map((n) => n + "\n").join("")); fs.writeFileSync(process.argv[4], retained + "\n");' "$RUNNER_TEMP/release" "$RUNNER_TEMP/old-assets.json" "$RUNNER_TEMP/stale-assets" "$RUNNER_TEMP/retained-count"
+          while IFS= read -r name; do
+            gh release delete-asset --yes renders -- "$name" < /dev/null
+          done < "$RUNNER_TEMP/stale-assets"
+      - name: Check the asset budget of the renders release before the upload
+        shell: bash
+        run: |
+          retained="$(cat "$RUNNER_TEMP/retained-count")"
+          staged="$(ls "$RUNNER_TEMP/release" | wc -l)"
+          total=$((staged + retained))
+          if [ "$total" -gt 950 ]; then
+            echo "the renders release would hold $total assets ($staged new plus $retained retained), over the budget of 950" >&2
+            exit 1
+          fi
+      - name: Upload the images and then the index
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP/release"
+          ls | grep -v '^index\.json$' | xargs -d '\n' gh release upload renders --clobber
+          gh release upload renders index.json --clobber
