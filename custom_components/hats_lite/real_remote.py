@@ -272,6 +272,9 @@ class RealRemote:
         if body is not None:
             self._memory.put(sha, body)
             return body
+        body = self._memory.get(sha)
+        if body is not None:
+            return body
         if self._blocked(sha):
             return None
         task = self._inflight.get(sha)
