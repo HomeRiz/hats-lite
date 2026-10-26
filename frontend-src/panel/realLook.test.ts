@@ -1,13 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactiveElement } from "lit";
 import type { PanelHass, PreviewCandidate } from "./contract";
 import "./preview";
 import type { HatsLitePreview } from "./preview";
+import { RealLookCtl } from "./realLookCtl";
 import { realEnv, resetRealIndex } from "./realLookData";
 import { stringsPreview as s } from "./strings.preview";
 
 const config = { views: [{ title: "Home", cards: [{ type: "div" }] }] };
 const entry = { full_name: "a/b", name: "Foo", commit: "abc1234", dark: "p/foo-dark.webp", light: "p/foo-light.webp" };
 const real = realEnv.fetchIndex;
+const realRemote = realEnv.fetchRemote;
 
 function makeHass(): PanelHass {
   return {
@@ -49,6 +52,7 @@ beforeEach(() => {
 afterEach(() => {
   document.body.replaceChildren();
   realEnv.fetchIndex = real;
+  realEnv.fetchRemote = realRemote;
   resetRealIndex();
 });
 
@@ -120,5 +124,60 @@ describe("real look", () => {
     q(el, ".real-look img")!.dispatchEvent(new Event("error"));
     await vi.waitFor(() => expect(q(el, ".stage")).not.toBeNull());
     expect(q(el, ".look-switch")).toBeNull();
+  });
+
+  it("uses a remote item with the remote base", async () => {
+    realEnv.fetchIndex = vi.fn(async () => {
+      throw new Error("404");
+    });
+    realEnv.fetchRemote = vi.fn(async () => ({ items: [entry] }));
+    const el = await mount(candidate(MOD));
+    await vi.waitFor(() => expect(q(el, ".real-look img")).not.toBeNull());
+    expect(q(el, ".real-look img")!.getAttribute("src")).toBe("/hats_lite_real/p/foo-dark.webp");
+  });
+
+  it("requests the remote half on a later sync once hass is set", async () => {
+    realEnv.fetchIndex = vi.fn(async () => ({ version: 1, items: [] }));
+    realEnv.fetchRemote = vi.fn(async () => ({ items: [entry] }));
+    const host = document.createElement("div") as unknown as ReactiveElement & { hass?: PanelHass };
+    host.requestUpdate = vi.fn();
+    const ctl = new RealLookCtl(host);
+    const c = candidate(MOD);
+    ctl.sync(c);
+    await vi.waitFor(() => expect(realEnv.fetchIndex).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(realEnv.fetchRemote).not.toHaveBeenCalled();
+    host.hass = makeHass();
+    ctl.sync(c);
+    await vi.waitFor(() => expect(ctl.item(c)).toBeDefined());
+    expect(realEnv.fetchRemote).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries an empty remote index on a later sync after five minutes", async () => {
+    vi.useFakeTimers();
+    try {
+      realEnv.fetchIndex = vi.fn(async () => ({ version: 1, items: [] }));
+      realEnv.fetchRemote = vi.fn(async () => ({ items: [] }));
+      const host = document.createElement("div") as unknown as ReactiveElement & { hass?: PanelHass };
+      host.requestUpdate = vi.fn();
+      host.hass = makeHass();
+      const ctl = new RealLookCtl(host);
+      const c = candidate(MOD);
+      ctl.sync(c);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(realEnv.fetchRemote).toHaveBeenCalledTimes(1);
+      ctl.sync(c);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(realEnv.fetchRemote).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1);
+      realEnv.fetchRemote = vi.fn(async () => ({ items: [entry] }));
+      ctl.sync(c);
+      ctl.sync(c);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(realEnv.fetchRemote).toHaveBeenCalledTimes(1);
+      expect(ctl.item(c)).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
