@@ -6,7 +6,7 @@
   },
   "columns": 7,
   "rows": 16,
-  "hash": "097a15a98187018d",
+  "hash": "0187e5d8b96a4b5e",
   "themes": [
     {
       "full_name": "3ative/3ative-blue-theme",
@@ -80,17 +80,17 @@
     },
     {
       "full_name": "Catalina-Automation/sabino-ha",
-      "commit": "HEAD",
+      "commit": "bfc6c40",
       "name": "Sabino",
       "index": 7,
-      "license": "MIT",
+      "license": "GPL-3.0",
       "dark": true,
       "light": true,
       "glass": true
     },
     {
       "full_name": "Cooper81/cyber-neon-themes",
-      "commit": "HEAD",
+      "commit": "983baab",
       "name": "Cyber",
       "index": 8,
       "license": "MIT",
@@ -300,7 +300,7 @@
     },
     {
       "full_name": "RazerPC/Dark-Moon",
-      "commit": "d212442",
+      "commit": "1360341",
       "name": "Dark Moon",
       "index": 29,
       "license": "MIT",
@@ -410,7 +410,7 @@
     },
     {
       "full_name": "andrikos1325/aurum-hud",
-      "commit": "HEAD",
+      "commit": "c648e64",
       "name": "Aurum HUD",
       "index": 40,
       "license": "MIT",
@@ -840,7 +840,7 @@
     },
     {
       "full_name": "loryanstrant/blackout",
-      "commit": "c93ca0e",
+      "commit": "15e93d6",
       "name": "Blackout",
       "index": 83,
       "license": "MIT",
@@ -850,7 +850,7 @@
     },
     {
       "full_name": "loryanstrant/ha-weylandyutani",
-      "commit": "32e1da0",
+      "commit": "4d1f706",
       "name": "weylandyutani",
       "index": 84,
       "license": "MIT",
@@ -860,7 +860,7 @@
     },
     {
       "full_name": "luigi-regolo/Edera",
-      "commit": "d1cd96e",
+      "commit": "27ad7f6",
       "name": "Edera",
       "index": 85,
       "license": "GPL-3.0",
@@ -1040,7 +1040,7 @@
     },
     {
       "full_name": "studio-prisma/homeassistant-theme-liquid-glass",
-      "commit": "f55be9b",
+      "commit": "b6df3c9",
       "name": "Liquid Glass",
       "index": 103,
       "license": "MIT",
