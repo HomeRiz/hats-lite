@@ -73,13 +73,20 @@ export async function main(argv, env = process.env) {
   const failures = [];
   const tasks = jobs.flatMap((job) => job.render.map((mode) => ({ job, mode })));
   try {
+    let done = 0;
+    const started = Date.now();
     await runPool(tasks, config.pages, async ({ job, mode }) => {
       const { record } = job;
+      const tick = () => {
+        done += 1;
+        console.log(`${done}/${tasks.length} ${record.full_name} ${mode} ${Math.round((Date.now() - started) / 1000)}s`);
+      };
       try {
         results.get(job)[mode] = await renderTheme(browser, options, record, mode, blocked);
       } catch (error) {
         failures.push({ full_name: record.full_name, commit: record.commit, name: record.theme, mode, reason: error.message });
       }
+      tick();
     });
   } finally {
     await browser.close();
