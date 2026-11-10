@@ -8,8 +8,13 @@ export const SANDBOX_CSP =
 export const ISOLATION_NOTE =
   "The preview runs third party code in a sandboxed frame. A mod that loops forever can still freeze this browser tab, because the frame may share the page's renderer thread. Reload the page if that happens.";
 
-export const DISCLOSURE =
-  "Everything sent to the preview is readable by the mod author: the card config, the states of the entities the card references (allowlisted attributes only), themes and language. Entities such as people, trackers, cameras and locks are replaced by placeholders. The shown data may leave the browser if the mod author wishes, and no isolation is perfect.";
+export const DISCLOSURE_AUTHOR =
+  "The mod author's code runs in a locked frame, but this cannot stop it from sending what it receives to the author. Both modes also receive your theme and language.";
+
+export const DISCLOSURE_OWN =
+  "Own config: it receives the config of the card you entered and the state of the entities that card uses. Sensitive entities such as person, camera, lock and device_tracker have their state hidden.";
+
+export const DISCLOSURE_MOCK = "Mock mode: the entities and states it receives are fake.";
 
 export const FRAME_ERROR_CODES = [
   "mod_error",

@@ -19,7 +19,7 @@ import { mockFor, mockHass } from "./modsMockCards";
 export type SandboxFactory = (options: SandboxOptions) => Sandbox;
 export type CardFactory = (hass: PanelHass, config: Record<string, unknown>) => Promise<HTMLElement>;
 
-type Target = { tag: string; config: Record<string, unknown>; hass: unknown };
+type Target = { tag: string; config: Record<string, unknown>; hass: unknown; own: boolean };
 
 type Phase = "idle" | "confirm" | "fetching" | "starting" | "running" | "error";
 
@@ -36,8 +36,8 @@ export function resetModsConsent(): void {
   consented.clear();
 }
 
-function consentKey(mod: ModEntry): string {
-  return `${mod.full_name.toLowerCase()}@${mod.tag ?? ""}`;
+function consentKey(mod: ModEntry, own: boolean): string {
+  return `${mod.full_name.toLowerCase()}@${mod.tag ?? ""}:${own ? "own" : "mock"}`;
 }
 
 const realCard: CardFactory = async (_hass, config) => {
@@ -110,13 +110,13 @@ export class HatsLiteModsPreview extends LitElement {
     const mod = this.mod;
     if (!mod || !this.hass) return null;
     const mock = mockFor(mod);
-    return { tag: mock.tag ?? "", config: mock.config, hass: mockHass(this.hass) };
+    return { tag: mock.tag ?? "", config: mock.config, hass: mockHass(this.hass), own: false };
   }
 
   private ownTarget(): Target | null {
     const parsed = parseConfig(this.configText);
     if (!parsed.ok || !this.hass) return null;
-    return { tag: parsed.tag, config: parsed.config, hass: this.hass };
+    return { tag: parsed.tag, config: parsed.config, hass: this.hass, own: true };
   }
 
   protected updated(changed: PropertyValues): void {
@@ -164,7 +164,7 @@ export class HatsLiteModsPreview extends LitElement {
 
   private async showInstalled(target: Target | null): Promise<void> {
     if (!target) return;
-    this.own = target.hass === this.hass;
+    this.own = target.own;
     const token = ++this.token;
     this.card?.remove();
     this.card = null;
@@ -205,7 +205,7 @@ export class HatsLiteModsPreview extends LitElement {
     if (!target) return;
     this.pending = target;
     this.problem = "";
-    if (this.mod && consented.has(consentKey(this.mod))) void this.start();
+    if (this.mod && consented.has(consentKey(this.mod, target.own))) void this.start();
     else {
       this.focusTarget = "confirm";
       this.phase = "confirm";
@@ -213,7 +213,7 @@ export class HatsLiteModsPreview extends LitElement {
   }
 
   private onConfirm = (): void => {
-    if (this.mod) consented.add(consentKey(this.mod));
+    if (this.mod && this.pending) consented.add(consentKey(this.mod, this.pending.own));
     void this.start();
   };
 
@@ -240,7 +240,7 @@ export class HatsLiteModsPreview extends LitElement {
     const hass = this.hass;
     const target = this.pending;
     if (!mod || !hass || !target) return;
-    this.own = target.hass === hass;
+    this.own = target.own;
     this.stop();
     const token = this.token;
     this.phase = "fetching";
@@ -330,7 +330,8 @@ export class HatsLiteModsPreview extends LitElement {
           <h3 id="confirm-h" tabindex="-1">${s.confirmTitle}</h3>
           <p id="confirm-status" role="status" aria-live="polite">${this.problem}</p>
           <p id="isolation">${s.isolation}</p>
-          <p id="disclosure">${s.disclosure}</p>
+          <p id="disclosure">${s.disclosureAuthor}</p>
+          <p id="disclosure-mode">${this.pending?.own ? s.disclosureOwn : s.disclosureMock}</p>
           <div class="tools">
             <button class="btn primary" type="button" id="confirm" @click=${this.onConfirm}>${s.confirm}</button>
             <button class="btn" type="button" id="cancel" @click=${this.onCancel}>${s.cancel}</button>

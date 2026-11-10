@@ -9,6 +9,7 @@ import type { ModEntry } from "./modsData";
 import type { PanelHass } from "./contract";
 import type { SandboxOptions } from "../sandbox/frame";
 import { stringsMods as s } from "./strings.mods";
+import { DISCLOSURE_AUTHOR, DISCLOSURE_MOCK } from "../sandbox/protocol";
 
 type Call = { type: string; [key: string]: unknown };
 
@@ -108,6 +109,8 @@ describe("mods dialog", () => {
     expect(inPreview("#mock-summary")?.textContent).toBeTruthy();
     (inPreview("#run") as HTMLButtonElement).click();
     await settle();
+    expect(inPreview("#disclosure")?.textContent).toBe(DISCLOSURE_AUTHOR);
+    expect(inPreview("#disclosure-mode")?.textContent).toBe(DISCLOSURE_MOCK);
     (inPreview("#confirm") as HTMLButtonElement).click();
     await settle();
     expect(options.length).toBe(1);
@@ -166,6 +169,47 @@ describe("mods dialog", () => {
     box.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
     expect(dialog()!.shadowRoot!.activeElement).toBe(close);
+  });
+
+  it("asks again before an own config run after consent in mock mode", async () => {
+    pick("piitaya/lovelace-mushroom").click();
+    await settle();
+    (inPreview("#run") as HTMLButtonElement).click();
+    await settle();
+    (inPreview("#confirm") as HTMLButtonElement).click();
+    await settle();
+    inDialog<HTMLElement>('[role="dialog"]')!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, composed: true }),
+    );
+    await settle();
+    pick("piitaya/lovelace-mushroom").click();
+    await settle();
+    const config = inPreview<HTMLTextAreaElement>("#config")!;
+    config.value = '{"type":"custom:mushroom-entity-card","entity":"light.real_secret"}';
+    config.dispatchEvent(new Event("input"));
+    await settle();
+    (inPreview("#run-own") as HTMLButtonElement).click();
+    await settle();
+    expect(inPreview("#confirm")).not.toBeNull();
+    expect(inPreview("#disclosure-mode")?.textContent).toBe(s.disclosureOwn);
+  });
+
+  it("keeps the own config disclosure when hass is replaced during the confirmation", async () => {
+    pick("piitaya/lovelace-mushroom").click();
+    await settle();
+    const config = inPreview<HTMLTextAreaElement>("#config")!;
+    config.value = '{"type":"custom:mushroom-entity-card","entity":"light.real_secret"}';
+    config.dispatchEvent(new Event("input"));
+    await settle();
+    (inPreview("#run-own") as HTMLButtonElement).click();
+    await settle();
+    el.hass = makeHass();
+    await settle();
+    expect(inPreview("#disclosure-mode")?.textContent).toBe(s.disclosureOwn);
+    (inPreview("#confirm") as HTMLButtonElement).click();
+    await settle();
+    const hass = options[0].hass as { states: Record<string, unknown> };
+    expect(hass.states["light.real_secret"]).toBeDefined();
   });
 
   it("keeps the own card box behind a collapsed advanced section", async () => {

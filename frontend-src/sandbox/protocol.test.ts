@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { isValidTag, parseFrameMessage, randomToken } from "./protocol";
+import { DISCLOSURE_AUTHOR, DISCLOSURE_MOCK, DISCLOSURE_OWN, isValidTag, parseFrameMessage, randomToken } from "./protocol";
+
+describe("consent disclosure", () => {
+  it("states that the author cannot be stopped from receiving the data", () => {
+    expect(DISCLOSURE_AUTHOR).toContain("cannot stop it from sending what it receives to the author");
+    expect(DISCLOSURE_AUTHOR).toContain("theme and language");
+  });
+
+  it("describes own config and mock data separately", () => {
+    expect(DISCLOSURE_OWN).toContain("the state of the entities that card uses");
+    expect(DISCLOSURE_OWN).toContain("person, camera, lock and device_tracker");
+    expect(DISCLOSURE_MOCK).toBe("Mock mode: the entities and states it receives are fake.");
+  });
+});
 
 describe("randomToken", () => {
   it("is 128 bits of hex and differs between calls", () => {
