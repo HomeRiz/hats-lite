@@ -22,7 +22,6 @@ jobs:
       - uses: hacs/action@d556e736723344f83838d08488c983a15381059a
         with:
           category: integration
-          ignore: hacsjson integration_manifest
           comment: false
 
   hassfest:
