@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PATH = ROOT / ".github" / "workflows" / "mods-bot.yml"
 TEXT = PATH.read_text()
 DATA = yaml.safe_load(TEXT)
-CREATE_PR_SHA = "5f6978faf089d4d20b00c7766989d076bb2fc7f1"
+CREATE_PR_SHA = "15733dbdfeedb4f7fdb73d13c6f5ac83b710fab8"
 
 
 def triggers():
