@@ -194,10 +194,11 @@ describe("InkController probing", () => {
       order.push("read");
       return real(node);
     }) as typeof getComputedStyle);
-    const original = Object.getOwnPropertyDescriptor(CSSStyleDeclaration.prototype, "backgroundColor");
+    const styleProto = Object.getPrototypeOf(document.createElement("div").style) as object;
+    const original = Object.getOwnPropertyDescriptor(styleProto, "backgroundColor");
     const setter = original?.set;
     if (original && setter) {
-      Object.defineProperty(CSSStyleDeclaration.prototype, "backgroundColor", {
+      Object.defineProperty(styleProto, "backgroundColor", {
         ...original,
         set(value: string) {
           if (value !== "") order.push("set");
@@ -208,7 +209,7 @@ describe("InkController probing", () => {
     try {
       await mount(hassOf("a"));
     } finally {
-      if (original) Object.defineProperty(CSSStyleDeclaration.prototype, "backgroundColor", original);
+      if (original) Object.defineProperty(styleProto, "backgroundColor", original);
     }
     const firstRead = order.indexOf("read");
     expect(order.slice(0, firstRead).filter((x) => x === "set").length).toBe(Object.keys(INK_SOURCES).length);

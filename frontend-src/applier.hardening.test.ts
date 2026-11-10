@@ -93,7 +93,8 @@ describe("hostile page styles", () => {
     await confirmingAt(31);
     const host = hostNode();
     expect(host.style.getPropertyPriority("all")).toBe("important");
-    expect(host.style.getPropertyValue("all")).toBe("initial");
+    expect(host.style.getPropertyValue("color")).toBe("initial");
+    expect(host.style.getPropertyPriority("color")).toBe("important");
   });
 
   it("shrinks the host to the box so only the box captures clicks", async () => {
