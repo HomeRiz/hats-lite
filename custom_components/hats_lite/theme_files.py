@@ -47,7 +47,7 @@ def theme_file_name(name):
     slug = theme_slug(name)
     if slug is None:
         return None
-    digest = hashlib.sha1(str(name).encode("utf-8")).hexdigest()[:6]
+    digest = hashlib.sha1(str(name).encode("utf-8"), usedforsecurity=False).hexdigest()[:6]
     return f"{FILE_PREFIX}{slug}-{digest}.yaml"
 
 

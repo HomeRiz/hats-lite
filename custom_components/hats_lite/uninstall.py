@@ -23,7 +23,7 @@ def _stem(repo):
     file_name = getattr(repo.data, "file_name", None)
     if not isinstance(file_name, str):
         raise install.InstallError(install.INVALID_REPOSITORY)
-    stem = file_name.replace(".yaml", "")
+    stem = file_name.removesuffix(".yaml")
     if not _safe(stem):
         raise install.InstallError(install.INVALID_REPOSITORY)
     return stem
