@@ -17,7 +17,7 @@ interface Harness {
   token: () => string;
 }
 
-function setup(timeoutMs?: number): Harness {
+function setup(timeoutMs?: number, syntheticLoad = true): Harness {
   vi.stubGlobal("MessageChannel", FakeChannel);
   const onError = vi.fn();
   const onReady = vi.fn();
@@ -32,7 +32,7 @@ function setup(timeoutMs?: number): Harness {
     timeoutMs,
   });
   Object.defineProperty(sandbox.element, "contentWindow", { value: win });
-  sandbox.element.dispatchEvent(new Event("load"));
+  if (syntheticLoad) sandbox.element.dispatchEvent(new Event("load"));
   const channel = FakeChannel.last as FakeChannel;
   const emit = (data: unknown): void => {
     channel.port1.onmessage?.({ data });
@@ -156,7 +156,7 @@ describe("createSandbox", () => {
   });
 
   it("surfaces a mod error, destroys the frame and reports once", () => {
-    const h = setup();
+    const h = setup(undefined, false);
     const token = boot(h);
     document.body.appendChild(h.sandbox.element);
     h.emit({ type: "error", token, code: "set_config", message: "bad config" });
@@ -182,7 +182,7 @@ describe("createSandbox", () => {
   });
 
   it("destroys on load timeout", () => {
-    const h = setup(5000);
+    const h = setup(5000, false);
     const token = boot(h);
     document.body.appendChild(h.sandbox.element);
     for (let i = 0; i < 5; i += 1) {
@@ -234,7 +234,7 @@ describe("createSandbox", () => {
   });
 
   it("destroy is idempotent and removes the listener", () => {
-    const h = setup();
+    const h = setup(undefined, false);
     const token = boot(h);
     document.body.appendChild(h.sandbox.element);
     h.sandbox.destroy();

@@ -68,9 +68,10 @@ describe("preview controls sheet", () => {
 
   it("closes on Escape from inside the sheet and returns focus to the toggle", async () => {
     const { sheet, toggle } = await mount();
+    toggle.style.display = "flex";
     toggle.click();
     await sheet.updateComplete;
-    await Promise.resolve();
+    await vi.waitFor(() => expect(sheet.shadowRoot!.activeElement).toBe(sheet.shadowRoot!.querySelector("#sheet")));
     const inner = sheet.querySelector<HTMLElement>("select")!;
     const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, composed: true, cancelable: true });
     inner.dispatchEvent(event);
