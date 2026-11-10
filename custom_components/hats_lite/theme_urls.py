@@ -93,6 +93,14 @@ def _normalize_value(v):
     return normalized
 
 
+DATA_URI_PATTERN = re.compile(r"data:image/(?:png|jpeg|jpg|webp|gif);base64,[a-z0-9+/=]*")
+
+
+def has_external_reference(normalized):
+    stripped = DATA_URI_PATTERN.sub("", normalized)
+    return "http:" in stripped or "https:" in stripped or "//" in stripped
+
+
 def _traverses(url_arg):
     decoded = url_arg
     for _ in range(MAX_UNQUOTE_ROUNDS):

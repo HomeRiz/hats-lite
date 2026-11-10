@@ -173,3 +173,25 @@ def test_ordinary_key_keeps_external_https_url():
 )
 def test_card_mod_rejects_obfuscated_external_urls(key, value):
     assert sanitize_value(value, key) is None
+
+
+@pytest.mark.parametrize("key", CARD_MOD_KEYS)
+@pytest.mark.parametrize(
+    "value",
+    [
+        "ha-card { background: url(/local/x(url(https://evil.example/a))); }",
+        'ha-card { background: url(/local/a.png"https://evil.example/a"); }',
+        'ha-card { content: url(/local/a.png) "https://evil.example"; }',
+        "ha-card { content: 'http://evil.example'; }",
+        "ha-card { background: image-set('//evil.example/a' 1x); }",
+    ],
+)
+def test_card_mod_rejects_any_external_reference_even_without_a_url_call(key, value):
+    assert sanitize_value(value, key) is None
+
+
+@pytest.mark.parametrize("key", CARD_MOD_KEYS)
+def test_card_mod_keeps_a_base64_image_that_contains_double_slashes(key):
+    value = "ha-card { background: url(data:image/png;base64,AA//AA==); }"
+    assert sanitize_value(value, key) == value
+
