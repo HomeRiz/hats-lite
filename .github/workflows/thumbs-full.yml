@@ -20,6 +20,7 @@ concurrency:
 
 jobs:
   gate:
+    if: github.repository == 'HomeRiz/hats-lite'
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:

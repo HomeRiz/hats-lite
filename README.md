@@ -29,8 +29,6 @@ The server keeps the trial and reverts it by itself. If you close the tab or los
 4. Go to Settings, Devices and services, add the integration HATS Lite.
 5. Open Themes in the sidebar.
 
-While this repository is private, HACS needs a GitHub token that can read it.
-
 ## Limits
 
 - The preview shows color, shape and glass settings. Effects that depend on card-mod or UIX rules are not rendered in the preview.
@@ -58,7 +56,7 @@ python scripts/thumbs_collect.py OUT_DIR --limit 104 --concurrency 3
 node scripts/thumbs-render.mjs OUT_DIR
 ```
 
-HATS Lite hosts nothing and never copies unlicensed material: with the default `--backgrounds licensed`, wallpaper variables are rendered only for themes whose repository license is permissive (MIT, Apache-2.0, BSD, ISC, Unlicense, CC0), and are dropped from the atlas otherwise. The weekly Thumbnails workflow opens a pull request with the result.
+What this repository hosts: the thumbnail atlas under `custom_components/hats_lite/frontend/thumbs/` and, once the full render workflow has been enabled and has run, full renders of catalog themes as assets of the `renders` release, which the integration downloads on demand after a SHA-256 check. Until then the panel shows the approximate preview. They are screenshots of how a theme looks, made by the workflows in `.github/workflows/`. With the default `--backgrounds licensed`, wallpaper variables are rendered only for themes whose repository license is permissive (MIT, Apache-2.0, BSD, ISC, Unlicense, CC0) and are dropped otherwise. The theme files themselves are never copied: they are fetched from the original repositories. If you maintain a theme and want its renders removed, open an issue and it will be removed.
 
 ## License
 

@@ -1,4 +1,4 @@
-import { DISCLOSURE, ISOLATION_NOTE } from "../sandbox/protocol";
+import { DISCLOSURE_AUTHOR, DISCLOSURE_MOCK, DISCLOSURE_OWN, ISOLATION_NOTE } from "../sandbox/protocol";
 
 export const stringsMods = {
   title: "Mods",
@@ -56,7 +56,9 @@ export const stringsMods = {
   showCard: "Show real card",
   confirmTitle: "Before running third party code",
   isolation: ISOLATION_NOTE,
-  disclosure: DISCLOSURE,
+  disclosureAuthor: DISCLOSURE_AUTHOR,
+  disclosureOwn: DISCLOSURE_OWN,
+  disclosureMock: DISCLOSURE_MOCK,
   confirm: "Run in sandbox",
   cancel: "Cancel",
   fetching: "Fetching the pinned release...",

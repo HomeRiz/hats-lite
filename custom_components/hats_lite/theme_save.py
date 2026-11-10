@@ -2,7 +2,7 @@ import os
 import re
 import stat
 
-from .theme_loader import NOT_VALID_YAML, ThemeError, load_yaml, top_level_keys
+from .theme_loader import NOT_VALID_YAML, load_yaml, top_level_keys
 from .theme_sanitizer import ThemeError, extract_urls, sanitize_value
 
 RESERVED_NAME = "default"

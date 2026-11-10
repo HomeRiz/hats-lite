@@ -13,6 +13,7 @@ from .theme_loader import (
 from .theme_urls import (
     _normalize_value,
     _split_urls,
+    has_external_reference,
     _without_urls,
     extract_urls,
 )
@@ -54,6 +55,13 @@ REJECT_PATTERNS = frozenset([
     "src(",
     "<",
     "&#",
+])
+
+CSS_BLOCK_REJECT_PATTERNS = frozenset([
+    "cross-fade(",
+    "image(",
+    "@font-face",
+    "@namespace",
 ])
 
 
@@ -115,8 +123,13 @@ def sanitize_value(value, key=None):
     for pattern in REJECT_PATTERNS:
         if pattern in normalized:
             return None
+    if css_block and any(pattern in normalized for pattern in CSS_BLOCK_REJECT_PATTERNS):
+        return None
 
-    rest = _split_urls(normalized)
+    if css_block and has_external_reference(normalized):
+        return None
+
+    rest = _split_urls(normalized, css_block)
     if rest is None:
         return None
 

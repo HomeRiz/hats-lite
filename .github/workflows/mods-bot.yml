@@ -14,14 +14,16 @@ concurrency:
 
 jobs:
   update:
-    if: github.ref == 'refs/heads/main'
+    if: github.repository == 'HomeRiz/hats-lite' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out the repository with actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - name: Set up Node with actions/setup-node v7.1.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24"
       - run: mkdir -p "$RUNNER_TEMP/mods-out"
@@ -30,7 +32,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPORT: ${{ runner.temp }}/mods-out/report.md
       - run: cp custom_components/hats_lite/mods_pinned.json "$RUNNER_TEMP/mods-out/mods_pinned.json"
-      - uses: actions/upload-artifact@v7
+      - name: Upload the artifact with actions/upload-artifact v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: mods
           path: ${{ runner.temp }}/mods-out
@@ -39,21 +42,24 @@ jobs:
 
   pr:
     needs: update
-    if: github.ref == 'refs/heads/main'
+    if: github.repository == 'HomeRiz/hats-lite' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out the repository with actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v8
+      - name: Download the artifact with actions/download-artifact v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: mods
           path: ${{ runner.temp }}/mods-out
-      - uses: actions/setup-node@v7
+      - name: Set up Node with actions/setup-node v7.1.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24"
       - id: validate

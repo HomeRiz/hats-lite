@@ -5,7 +5,7 @@ import type { HatsLiteModsPreview } from "./modsPreview";
 import { resetModsConsent } from "./modsPreview";
 import type { PanelHass } from "./contract";
 import type { SandboxOptions } from "../sandbox/frame";
-import { DISCLOSURE, ISOLATION_NOTE } from "../sandbox/protocol";
+import { DISCLOSURE_AUTHOR, DISCLOSURE_OWN, ISOLATION_NOTE } from "../sandbox/protocol";
 import { stringsMods as s } from "./strings.mods";
 
 type Call = { type: string; [key: string]: unknown };
@@ -179,7 +179,8 @@ describe("hats-lite-mods preview", () => {
     click("#run-own");
     await settle();
     expect(pv("#isolation")?.textContent).toBe(ISOLATION_NOTE);
-    expect(pv("#disclosure")?.textContent).toBe(DISCLOSURE);
+    expect(pv("#disclosure")?.textContent).toBe(DISCLOSURE_AUTHOR);
+    expect(pv("#disclosure-mode")?.textContent).toBe(DISCLOSURE_OWN);
     expect(calls.some((c) => c.type === "hats_lite/mod_asset")).toBe(false);
     expect(sandboxes.length).toBe(0);
     click("#confirm");
@@ -193,6 +194,7 @@ describe("hats-lite-mods preview", () => {
     expect(sandboxes[0].options.hass).toBe(el.hass);
     expect(pv(".stage iframe")).not.toBeNull();
   });
+
 
   it("remembers consent for the session", async () => {
     await mount(makeHass());

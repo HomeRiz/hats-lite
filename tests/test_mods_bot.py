@@ -55,11 +55,8 @@ def test_actions_are_pinned_like_the_rest_of_the_repo():
     assert f"peter-evans/create-pull-request@{CREATE_PR_SHA}" in seen
     for ref in seen:
         name, version = ref.split("@")
-        if name.startswith("actions/"):
-            assert re.fullmatch(r"v\d+", version), ref
-        else:
-            assert re.fullmatch(r"[0-9a-f]{40}", version), ref
-    assert any(r.startswith("actions/upload-artifact@v7") for r in seen)
+        assert re.fullmatch(r"[0-9a-f]{40}", version), ref
+    assert "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9" in seen
     assert any(r.startswith("actions/setup-node@") for r in seen)
 
 
@@ -67,7 +64,7 @@ def test_jobs_are_pinned_and_checkouts_drop_credentials():
     for job in DATA["jobs"].values():
         assert job["runs-on"] == "ubuntu-26.04"
         assert isinstance(job["timeout-minutes"], int)
-        assert job["if"] == "github.ref == 'refs/heads/main'"
+        assert job["if"] == "github.repository == 'HomeRiz/hats-lite' && github.ref == 'refs/heads/main'"
         for step in job["steps"]:
             if str(step.get("uses", "")).startswith("actions/checkout"):
                 assert step["with"]["persist-credentials"] is False
