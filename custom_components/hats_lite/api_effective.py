@@ -7,6 +7,7 @@ except ImportError:
 
 from homeassistant.auth import EVENT_USER_REMOVED
 from homeassistant.components import websocket_api
+from homeassistant.components.frontend import DATA_THEMES
 from homeassistant.util import dt as dt_util
 
 from . import api, scheduler
@@ -125,6 +126,9 @@ async def ws_own_set(hass, connection, msg):
         return
     if is_removing(hass, selection.get("theme")):
         _fail(connection, msg, THEME_UNAVAILABLE, UNAVAILABLE_TEXT)
+        return
+    if not rules.theme_known(selection["theme"], set(hass.data.get(DATA_THEMES) or {})):
+        _fail(connection, msg, "unknown_theme", "Theme is not installed")
         return
     await data["store"].async_set_own(connection.user.id, selection, api._now())
     connection.send_result(msg["id"], {"own": data["store"].get_own(connection.user.id)})

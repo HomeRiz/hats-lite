@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 
 try:
@@ -16,6 +17,7 @@ from .api_calendar import async_register_calendar_commands
 from .api_install import ws_install_theme, ws_uninstall_theme
 from .api_mods import async_register_mods_commands
 from .api_people import async_register_people_commands
+from .api_schema import modes, variables
 from .catalog import CatalogError, load_catalog
 from .const import DOMAIN, UPLOAD_DIR_NAME
 from .outcome_api import ws_outcome_ack
@@ -37,41 +39,17 @@ from .trial import accept, phase, revert_due, start_trial, trial_to_dict
 from .values import finite_number
 from .views import record_www_state
 
+_LOGGER = logging.getLogger(__name__)
 REVERT_EVENT = "hats_lite_revert"
+WATCHDOG_RETRY_SECONDS = 30
 CATALOG_TTL = 300
 CATALOG_FAILURE_TTL = 15
 CATALOG_STALE_SECONDS = 6 * 3600
-MAX_VARIABLES = 300
-MAX_KEY = 80
-MAX_VALUE = 4096
-MODE_KEYS = {"dark", "light"}
 END_FIELDS = {vol.Optional("started_at"): finite_number}
 
 
 def _now():
     return time.time()
-
-
-def _variables(value):
-    if not isinstance(value, dict) or len(value) > MAX_VARIABLES:
-        raise vol.Invalid("Too many variables")
-    for key, item in value.items():
-        if not isinstance(key, str) or len(key) > MAX_KEY:
-            raise vol.Invalid("Invalid variable name")
-        if isinstance(item, bool) or not isinstance(item, (str, int, float)):
-            raise vol.Invalid("Invalid variable value")
-        if isinstance(item, str) and len(item) > MAX_VALUE:
-            raise vol.Invalid("Variable value is too long")
-    return value
-
-
-def _modes(value):
-    if not isinstance(value, dict) or not set(value) <= MODE_KEYS:
-        raise vol.Invalid("Invalid modes")
-    for block in value.values():
-        if isinstance(block, dict):
-            _variables(block)
-    return value
 
 
 def _stale_catalog(data):
@@ -145,9 +123,10 @@ def cancel_all_watchdogs(hass):
         cancel_watchdog(hass, user_id)
 
 
-def schedule_watchdog(hass, trial):
+def schedule_watchdog(hass, trial, delay=None):
     cancel_watchdog(hass, trial.user_id)
-    delay = max(0.0, trial.confirm_until - _now())
+    if delay is None:
+        delay = max(0.0, trial.confirm_until - _now())
     _data(hass)["handles"][trial.user_id] = hass.loop.call_later(
         delay, lambda: hass.async_create_task(_watchdog_fire(hass, trial.user_id))
     )
@@ -171,9 +150,20 @@ async def _watchdog_fire(hass, user_id):
     if not revert_due(trial, _now()):
         schedule_watchdog(hass, trial)
         return
-    if await data["store"].async_end_trial(user_id, trial.started_at, "reverted", _now()):
-        _broadcast(hass, user_id, trial.previous, trial.started_at)
+    if await _end_trial(hass, trial):
         scheduler.async_reschedule(hass, user_id)
+
+
+async def _end_trial(hass, trial):
+    try:
+        ended = await _data(hass)["store"].async_end_trial(trial.user_id, trial.started_at, "reverted", _now())
+    except Exception as err:
+        _LOGGER.warning("Trial revert failed (%s)", type(err).__name__)
+        schedule_watchdog(hass, trial, WATCHDOG_RETRY_SECONDS)
+        return False
+    if ended:
+        _broadcast(hass, trial.user_id, trial.previous, trial.started_at)
+    return ended
 
 
 async def async_start_user_trial(hass, user_id, previous, candidate):
@@ -189,11 +179,9 @@ async def async_start_user_trial(hass, user_id, previous, candidate):
 
 
 async def async_restore_watchdogs(hass):
-    store = _data(hass)["store"]
-    for trial in store.all_trials():
+    for trial in _data(hass)["store"].all_trials():
         if revert_due(trial, _now()):
-            if await store.async_end_trial(trial.user_id, trial.started_at, "reverted", _now()):
-                _broadcast(hass, trial.user_id, trial.previous, trial.started_at)
+            await _end_trial(hass, trial)
         else:
             schedule_watchdog(hass, trial)
 
@@ -319,8 +307,8 @@ def ws_subscribe(hass, connection, msg):
     {
         vol.Required("type"): "hats_lite/save_theme",
         vol.Required("name"): vol.All(str, vol.Length(min=1, max=MAX_NAME)),
-        vol.Required("variables"): _variables,
-        vol.Optional("modes", default={}): _modes,
+        vol.Required("variables"): variables,
+        vol.Optional("modes", default={}): modes,
     }
 )
 @websocket_api.async_response
