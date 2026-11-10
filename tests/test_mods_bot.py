@@ -64,7 +64,7 @@ def test_jobs_are_pinned_and_checkouts_drop_credentials():
     for job in DATA["jobs"].values():
         assert job["runs-on"] == "ubuntu-26.04"
         assert isinstance(job["timeout-minutes"], int)
-        assert job["if"] == "github.ref == 'refs/heads/main'"
+        assert job["if"] == "github.repository == 'HomeRiz/hats-lite' && github.ref == 'refs/heads/main'"
         for step in job["steps"]:
             if str(step.get("uses", "")).startswith("actions/checkout"):
                 assert step["with"]["persist-credentials"] is False
