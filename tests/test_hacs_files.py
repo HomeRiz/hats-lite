@@ -64,7 +64,7 @@ def test_validate_actions_are_pinned_to_full_shas():
     text = (WORKFLOWS / "validate.yml").read_text()
     assert re.search(rf"hacs/action@{FULL_SHA}\s", text)
     assert re.search(rf"home-assistant/actions/hassfest@{FULL_SHA}\s", text)
-    assert "ignore: hacsjson integration_manifest" in text
+    assert "ignore:" not in text
     assert "@main" not in text and "@master" not in text
 
 
