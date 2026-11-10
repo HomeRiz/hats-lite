@@ -41,3 +41,10 @@ You can expect an acknowledgement within a few days and a status update once the
 - Authorization is enforced on the server in every websocket handler and the upload view, using the authenticated user of the connection. Read only commands need an authenticated user; commands that change anything are limited to administrators or to the user's own settings.
 - The image route `/hats_lite_real/<folder>/<file>` is served without authentication because an image element cannot send a token. It only serves paths listed in the pinned render index, downloads are limited in number and rate, failures are cached, and the disk cache is capped at 64 MB. A response confirms that HATS Lite is installed.
 - Uploaded backgrounds live under `/config/www/hats_lite/` and Home Assistant serves `/local/` without authentication. File names are random (128 bits), so they cannot be guessed, but anyone who learns a URL can read that image.
+
+## Known limits
+
+- The mod sandbox runs a mod in a locked frame with a strict content policy and gives it only a filtered copy of the state it needs. It cannot stop a hostile mod from sending that copy to its author, for example by navigating its own frame or through WebRTC. In own config mode the copy holds the card config and the states of the entities that card uses, with the state of sensitive domains such as person, camera, lock and device_tracker hidden. Both modes also send your theme and language. Mock mode sends fake entities and states. Consent is asked separately for each mode. Only run mods from authors you trust.
+- Theme variables other than the `card-mod-*` and `uix-*` keys may contain an external `https` `url()`, which is how many themes load backgrounds. Previewing such a theme makes your browser contact that address, which reveals your IP address and browser to its owner. Inside `card-mod-*` and `uix-*` values an external `url()` is rejected.
+- The preview of an installed third party card runs that card's code in the Home Assistant frontend. The read only preview guards against accidental changes, not against hostile code.
+
