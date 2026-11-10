@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-HATS Lite is pre-release. Only the latest commit on the default branch and the latest tagged release receive security fixes.
+Only the latest release and the latest commit on the default branch receive security fixes.
 
 ## Reporting a vulnerability
 
@@ -39,3 +39,5 @@ You can expect an acknowledgement within a few days and a status update once the
 - Theme variables are applied only to the preview containers, never to the document root, until the user applies or tries a theme.
 - Uploaded backgrounds are checked by file structure, size limited and stored under `/config/www/hats_lite/`.
 - Authorization is enforced on the server in every websocket handler and the upload view, using the authenticated user of the connection. Read only commands need an authenticated user; commands that change anything are limited to administrators or to the user's own settings.
+- The image route `/hats_lite_real/<folder>/<file>` is served without authentication because an image element cannot send a token. It only serves paths listed in the pinned render index, downloads are limited in number and rate, failures are cached, and the disk cache is capped at 64 MB. A response confirms that HATS Lite is installed.
+- Uploaded backgrounds live under `/config/www/hats_lite/` and Home Assistant serves `/local/` without authentication. File names are random (128 bits), so they cannot be guessed, but anyone who learns a URL can read that image.

@@ -19,6 +19,9 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 
 ### Changed
 
+- Workflow actions from `actions/*` are pinned to commit SHAs, as the rest already were.
+- The README and SECURITY.md state what the repository hosts and which routes are served without authentication.
+- Uninstall strips only the trailing `.yaml` from a theme file name.
 - The theme fetch only serves repositories that are in the theme catalog, reports permanent and temporary failures with distinct codes, and caches both bounded.
 - Theme files are loaded with a guarded YAML loader that limits aliases, merge keys and nesting, and values are normalized and checked individually (urls, escapes, trailing semicolons).
 - Background uploads are checked by file structure and size, the folder keeps the 20 most recent files that no saved theme uses, and saving refuses reserved and already used theme names.
