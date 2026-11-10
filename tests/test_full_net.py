@@ -38,7 +38,7 @@ URLS = [
     (f"http://0.0.0.0:{PORT}/index.html", False),
     (f"http://user:pw@127.0.0.1:{PORT}/index.html", False),
     (f"http://127.0.0.1.evil.com:{PORT}/index.html", False),
-    ("http://192.168.68.3:8123/", False),
+    ("http://192.168.1.10:8123/", False),
     ("http://127.0.0.1:8123/", False),
     ("http://127.0.0.1:8124/", False),
     ("https://raw.githubusercontent.com/o/r/abc1234/a.png", True),

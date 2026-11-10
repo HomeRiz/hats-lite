@@ -54,7 +54,7 @@ def test_permissions_are_read_only_except_on_the_publish_job():
             assert "permissions" not in job
         assert job["runs-on"] == "ubuntu-26.04"
         assert isinstance(job["timeout-minutes"], int)
-    assert data["jobs"]["render"]["timeout-minutes"] == 30
+    assert data["jobs"]["render"]["timeout-minutes"] == 60
     assert FILE.read_text().count("contents: write") == 1
 
 
