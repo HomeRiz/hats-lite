@@ -102,7 +102,7 @@ def _traverses(url_arg):
     return any(part == ".." for part in decoded.split("/"))
 
 
-def _url_allowed(url_arg):
+def _url_allowed(url_arg, css_block=False):
     if VAR_PATTERN.match(url_arg):
         return True
     if url_arg.startswith("data:"):
@@ -113,7 +113,7 @@ def _url_allowed(url_arg):
     if any(char in ARG_FORBIDDEN for char in url_arg):
         return False
     if url_arg.startswith("https://"):
-        return True
+        return not css_block
     if url_arg.startswith(LOCAL_PREFIXES):
         return not _traverses(url_arg)
     return False
@@ -143,7 +143,7 @@ def _read_url_call(normalized, pos):
     return None, pos
 
 
-def _split_urls(normalized):
+def _split_urls(normalized, css_block=False):
     rest = []
     count = 0
     cursor = 0
@@ -153,7 +153,7 @@ def _split_urls(normalized):
         if count > MAX_URLS:
             return None
         url_arg, end = _read_url_call(normalized, pos + 4)
-        if not url_arg or not _url_allowed(url_arg):
+        if not url_arg or not _url_allowed(url_arg, css_block):
             return None
         rest.append(normalized[cursor:pos])
         cursor = end

@@ -56,6 +56,13 @@ REJECT_PATTERNS = frozenset([
     "&#",
 ])
 
+CSS_BLOCK_REJECT_PATTERNS = frozenset([
+    "cross-fade(",
+    "image(",
+    "@font-face",
+    "@namespace",
+])
+
 
 def _strip_important(value):
     stripped = value.rstrip()
@@ -115,8 +122,10 @@ def sanitize_value(value, key=None):
     for pattern in REJECT_PATTERNS:
         if pattern in normalized:
             return None
+    if css_block and any(pattern in normalized for pattern in CSS_BLOCK_REJECT_PATTERNS):
+        return None
 
-    rest = _split_urls(normalized)
+    rest = _split_urls(normalized, css_block)
     if rest is None:
         return None
 

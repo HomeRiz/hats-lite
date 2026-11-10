@@ -1,6 +1,6 @@
 import json
 import re
-from urllib.parse import quote
+from urllib.parse import quote, urljoin, urlsplit
 
 import aiohttp
 
@@ -50,6 +50,12 @@ EXCLUDED_DIRS = {
 JSDELIVR_URL = "https://data.jsdelivr.com/v1/packages/gh/{full_name}@{commit}?structure=flat"
 RAW_URL = "https://raw.githubusercontent.com/{full_name}/{commit}/{path}"
 TREE_URL = "https://api.github.com/repos/{full_name}/git/trees/{commit}?recursive=1"
+ALLOWED_HOSTS = frozenset(
+    {"raw.githubusercontent.com", "api.github.com", "data.jsdelivr.com", "data-v2.hacs.xyz"}
+)
+REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+MAX_REDIRECTS = 3
+MAX_LOCATION = 2048
 
 
 class ThemeFetchError(Exception):
@@ -141,12 +147,62 @@ async def _read_bounded(resp, limit):
     return bytes(body)
 
 
+def _refused(message="Redirect refused"):
+    return ThemeFetchError(message, code=FETCH_FAILED)
+
+
+def check_url(url):
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        raise _refused("Request URL refused") from None
+    if parts.scheme != "https" or port is not None:
+        raise _refused("Request URL refused")
+    if parts.username is not None or parts.password is not None:
+        raise _refused("Request URL refused")
+    if (parts.hostname or "").lower() not in ALLOWED_HOSTS:
+        raise _refused("Request URL refused")
+    return parts.geturl()
+
+
+def _redirect_target(resp):
+    if resp.status not in REDIRECT_STATUSES:
+        return None
+    location = (getattr(resp, "headers", None) or {}).get("Location")
+    if not location or len(location) > MAX_LOCATION:
+        raise _refused()
+    return location
+
+
+async def fetch_checked(session, url, read, timeout=REQUEST_TIMEOUT):
+    for _ in range(MAX_REDIRECTS + 1):
+        url = check_url(url)
+        async with session.get(url, timeout=timeout, allow_redirects=False) as resp:
+            target = _redirect_target(resp)
+            if target is None:
+                return await read(resp)
+            url = urljoin(url, target)
+    raise _refused("Too many redirects")
+
+
+async def _body_reader(resp):
+    if resp.status != 200:
+        raise await _status_error(resp)
+    return await _read_bounded(resp, MAX_THEME_BYTES)
+
+
+async def _json_reader(resp):
+    if resp.status != 200:
+        raise await _status_error(resp)
+    if hasattr(getattr(resp, "content", None), "iter_chunked"):
+        return json.loads(await _read_bounded(resp, MAX_TREE_BYTES))
+    return await resp.json()
+
+
 async def _get_body(session, url):
     try:
-        async with session.get(url, timeout=REQUEST_TIMEOUT) as resp:
-            if resp.status != 200:
-                raise await _status_error(resp)
-            return await _read_bounded(resp, MAX_THEME_BYTES)
+        return await fetch_checked(session, url, _body_reader)
     except ThemeFetchError:
         raise
     except (aiohttp.ClientError, TimeoutError, OSError) as err:
@@ -157,12 +213,7 @@ async def _get_body(session, url):
 
 async def _get_json(session, url):
     try:
-        async with session.get(url, timeout=REQUEST_TIMEOUT) as resp:
-            if resp.status != 200:
-                raise await _status_error(resp)
-            if hasattr(getattr(resp, "content", None), "iter_chunked"):
-                return json.loads(await _read_bounded(resp, MAX_TREE_BYTES))
-            return await resp.json()
+        return await fetch_checked(session, url, _json_reader)
     except ThemeFetchError:
         raise
     except (aiohttp.ClientError, TimeoutError, OSError) as err:
