@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-10
+
 ### Added
 
 - Pre-rendered theme thumbnails: a build time sprite atlas lets the gallery draw previews without loading every theme, with the live thumbnail as the fallback. Wallpapers are included only for permissively licensed themes.
