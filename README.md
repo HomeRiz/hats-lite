@@ -56,7 +56,7 @@ python scripts/thumbs_collect.py OUT_DIR --limit 104 --concurrency 3
 node scripts/thumbs-render.mjs OUT_DIR
 ```
 
-What this repository hosts: the thumbnail atlas under `custom_components/hats_lite/frontend/thumbs/` and full renders of catalog themes, published as assets of the `renders` release and downloaded by the integration on demand after a SHA-256 check. They are screenshots of how a theme looks, made by the workflows in `.github/workflows/`. With the default `--backgrounds licensed`, wallpaper variables are rendered only for themes whose repository license is permissive (MIT, Apache-2.0, BSD, ISC, Unlicense, CC0) and are dropped otherwise. The theme files themselves are never copied: they are fetched from the original repositories. If you maintain a theme and want its renders removed, open an issue and it will be removed.
+What this repository hosts: the thumbnail atlas under `custom_components/hats_lite/frontend/thumbs/` and, once the full render workflow has been enabled and has run, full renders of catalog themes as assets of the `renders` release, which the integration downloads on demand after a SHA-256 check. Until then the panel shows the approximate preview. They are screenshots of how a theme looks, made by the workflows in `.github/workflows/`. With the default `--backgrounds licensed`, wallpaper variables are rendered only for themes whose repository license is permissive (MIT, Apache-2.0, BSD, ISC, Unlicense, CC0) and are dropped otherwise. The theme files themselves are never copied: they are fetched from the original repositories. If you maintain a theme and want its renders removed, open an issue and it will be removed.
 
 ## License
 
