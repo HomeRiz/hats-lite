@@ -12,7 +12,7 @@ import {
 } from "./peopleData";
 import "./peopleDialogs";
 import type { DoneDetail } from "./peopleDialogs";
-import { allThemeNamesOf, themeNamesOf } from "./peopleThemes";
+import { allThemeNamesOf } from "./peopleThemes";
 import { rangeText, renderTimeline } from "./peopleHolidays";
 import "./peopleHolidays";
 import { peopleStyles } from "./peopleStyles";
@@ -97,7 +97,7 @@ export class HatsLitePeople extends LitElement {
   }
 
   private themeNames(): string[] {
-    return themeNamesOf(this.hass);
+    return allThemeNamesOf(this.hass);
   }
 
   private open(dialog: Dialog): void {

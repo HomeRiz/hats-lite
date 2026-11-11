@@ -13,6 +13,7 @@ import {
 import { endsProblem, MONTH_DAYS, toLocalInput, untilSeconds, validDay, MAX_UNTIL_SECONDS } from "./peopleForm";
 import { dialogStyles } from "./peopleStyles";
 import { errorMessage, stringsPeople as s } from "./strings.people";
+import { visibleThemeNames } from "./themeVisibility";
 
 export type DoneDetail = { message: string; selfApply?: Selection };
 
@@ -103,7 +104,7 @@ export class DialogBase extends LitElement {
   }
 
   protected themeOptions(selected: string) {
-    const names = [s.defaultTheme, ...this.themes.filter((n) => n !== s.defaultTheme)];
+    const names = [s.defaultTheme, ...visibleThemeNames(this.themes, selected).filter((n) => n !== s.defaultTheme)];
     const options = names.map((n) => html`<option value=${n} ?selected=${n === selected}>${n}</option>`);
     if (selected && !names.includes(selected)) {
       const label = this.installed.includes(selected) ? selected : s.missingTheme(selected);

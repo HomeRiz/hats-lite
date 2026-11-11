@@ -3,7 +3,7 @@ import type { Holiday } from "./peopleData";
 import { eventYear, holidayProblem, MAX_NAME, type HolidayProblem } from "./peopleForm";
 import { dialogStyles } from "./peopleStyles";
 import { holidayId, PRESET_HOLIDAYS } from "./presetHolidays";
-import { selectableThemes } from "./peopleThemes";
+import { visibleThemeNames } from "./themeVisibility";
 import { stringsPeople as s } from "./strings.people";
 
 type Kind = "holiday" | "event";
@@ -111,8 +111,8 @@ export class HatsLiteHolidayForm extends LitElement {
   }
 
   private themeOptions() {
-    const names = [s.defaultTheme, ...selectableThemes(this.themes).filter((n) => n !== s.defaultTheme)];
     const selected = this.draft.theme;
+    const names = [s.defaultTheme, ...visibleThemeNames(this.themes, selected).filter((n) => n !== s.defaultTheme)];
     const options = names.map((n) => html`<option value=${n} ?selected=${n === selected}>${n}</option>`);
     if (selected && !names.includes(selected)) {
       options.push(html`<option value=${selected} selected>${s.missingTheme(selected)}</option>`);
