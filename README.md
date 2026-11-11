@@ -4,7 +4,7 @@ HATS Lite is a Home Assistant integration that adds one panel to the sidebar for
 
 ## What it does
 
-- **Browse** the theme catalog. If HACS is installed the list comes from HACS, otherwise from the public HACS theme catalog. Every card shows the repository, description, stars and whether the theme is installed.
+- **Browse** the theme catalog. If the Marketplace (Home Assistant 2026.11 and newer) or HACS is available the list comes from it, otherwise from the public HACS theme catalog. Every card shows the repository, description, stars and whether the theme is installed.
 - **Preview** a theme on your real dashboard. Pick a dashboard and a view, drag the divider to compare the current theme with the candidate, switch between desktop, tablet and phone widths, between normal and compact density, and between dark and light.
 - **Apply** a theme that is already installed, or **try** it for 30 seconds.
 - **Design** a simple theme with main and accent color, corner radius, glass blur, card tint and a background image, then save it as a theme file. Uploading a background and saving a theme need an administrator account.
@@ -18,10 +18,20 @@ The server keeps the trial and reverts it by itself. If you close the tab or los
 ## Requirements
 
 - Home Assistant 2025.7.0 or newer.
-- HACS is optional. Without it the panel can preview any theme in the public catalog, but a theme can only be applied after it is installed in your `themes` folder.
+- The Marketplace (Home Assistant 2026.11 and newer) or HACS is optional. Without one of them the panel can preview any theme in the public catalog, but a theme can only be applied after it is installed in your `themes` folder. With one of them, administrators can install and remove catalog themes from the panel. The Marketplace asks you to accept its warning once before the panel can install anything.
 - `frontend: themes:` configured in Home Assistant, as for any theme.
 
 ## Installation
+
+Home Assistant 2026.11 and newer, with the Marketplace:
+
+1. Go to Settings, Marketplace and select Add from link.
+2. Enter `HomeRiz/hats-lite`, choose the type Integration if asked, and select Add.
+3. Select HATS Lite in the list, install it and restart Home Assistant.
+4. Go to Settings, Devices and services, add the integration HATS Lite.
+5. Open Themes in the sidebar.
+
+Older Home Assistant versions, with HACS:
 
 1. In HACS, open the menu and choose Custom repositories.
 2. Add this repository with the type Integration.

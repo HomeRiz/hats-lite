@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 
 ## [Unreleased]
 
+### Added
+
+- Support for the Home Assistant Marketplace: the catalog, the installed state and installing or removing a theme from the panel work through the Marketplace on Home Assistant 2026.11 and newer, and through HACS on older versions.
+
+### Fixed
+
+- The Mods tab shows cards installed by the Marketplace as installed.
+
 ## [0.1.0] - 2026-11-10
 
 ### Added
