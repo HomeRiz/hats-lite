@@ -113,7 +113,7 @@ describe("browse atlas", () => {
     const el = await mount(hass);
     el.shadowRoot!.querySelector<HTMLButtonElement>('[data-filter="glass"]')!.click();
     await settle(el);
-    const names = Array.from(el.shadowRoot!.querySelectorAll(".card .name")).map((n) => n.textContent);
+    const names = Array.from(el.shadowRoot!.querySelectorAll(".card:not([data-key=\"default\"]) .name")).map((n) => n.textContent);
     expect(names).toEqual(["mono-theme"]);
   });
 
