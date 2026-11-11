@@ -195,7 +195,7 @@ async def test_uninstall_goes_through_the_marketplace(hass, market, repo, hass_w
     client = await hass_ws_client(hass)
     msg = await _uninstall(client)
     assert msg["success"] is True
-    assert msg["result"] == {"uninstalled": True}
+    assert msg["result"] == {"uninstalled": True, "reset_selected": False}
     assert repo.removals == 1
     assert market.writes == 1
 
