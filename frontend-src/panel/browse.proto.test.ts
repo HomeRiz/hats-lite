@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { catalog, installObserver, makeHass, mount, names, themeCalls, type FakeObserver } from "./browseTestKit";
+import { catalog, installObserver, makeHass, mount, names, themeCalls, type FakeObserver, catalogQuery } from "./browseTestKit";
 import type { HatsLiteBrowse } from "./browse";
 import { EVENT_THEME_SELECTED, type ThemeSelectedDetail } from "./contract";
 
@@ -32,7 +32,7 @@ describe("object prototype theme names in the gallery", () => {
     el.addEventListener(EVENT_THEME_SELECTED, (e) => {
       detail = (e as CustomEvent<ThemeSelectedDetail>).detail;
     });
-    el.shadowRoot!.querySelector<HTMLButtonElement>("button.btn.primary")!.click();
+    catalogQuery<HTMLButtonElement>(el.shadowRoot!, "button.btn.primary")!.click();
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(detail).toBeDefined();
     expect(Object.keys(detail!.themes)).toEqual([name]);
@@ -43,6 +43,6 @@ describe("object prototype theme names in the gallery", () => {
     const entry = { ...catalog[1], full_name: "bob/plain", installed: false };
     const hass = makeHass([entry], () => ({ themes: { plain: { vars: {} } } }));
     const el = (await mount(hass)) as HatsLiteBrowse;
-    expect(el.shadowRoot!.querySelector(".chip.ok")).toBeNull();
+    expect(catalogQuery(el.shadowRoot!, ".chip.ok")).toBeNull();
   });
 });

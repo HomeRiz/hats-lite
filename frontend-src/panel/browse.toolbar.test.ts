@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { modeForFilter } from "./browseFilters";
 import { browseStyles } from "./browseStyles";
-import { bundle, catalog, makeHass, mount, settle } from "./browseTestKit";
+import { bundle, catalog, makeHass, mount, settle, catalogQuery } from "./browseTestKit";
 import { stringsBrowse } from "./strings.browse";
 
 beforeEach(() => {
@@ -10,7 +10,7 @@ beforeEach(() => {
 });
 
 function chip(el: HTMLElement, id: string): HTMLButtonElement {
-  return el.shadowRoot!.querySelector<HTMLButtonElement>(`[data-filter="${id}"]`)!;
+  return catalogQuery<HTMLButtonElement>(el.shadowRoot!, `[data-filter="${id}"]`)!;
 }
 
 function hassFor(darkMode: boolean) {
@@ -32,9 +32,9 @@ describe("modeForFilter", () => {
 describe("gallery toolbar", () => {
   it("has no showing label and no mode switch", async () => {
     const el = await mount(hassFor(true));
-    expect(el.shadowRoot!.querySelector(".showing")).toBeNull();
-    expect(el.shadowRoot!.querySelector(".seg")).toBeNull();
-    expect(el.shadowRoot!.querySelector("[data-mode]")).toBeNull();
+    expect(catalogQuery(el.shadowRoot!, ".showing")).toBeNull();
+    expect(catalogQuery(el.shadowRoot!, ".seg")).toBeNull();
+    expect(catalogQuery(el.shadowRoot!, "[data-mode]")).toBeNull();
     expect(el.shadowRoot!.querySelectorAll(".chip-btn")).toHaveLength(5);
   });
 

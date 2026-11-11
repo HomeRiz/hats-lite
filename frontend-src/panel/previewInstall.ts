@@ -11,7 +11,7 @@ export const INSTALL_TIMEOUT_MS = 12000;
 let inFlight = 0;
 
 export type InstallTarget = { fullName: string; hacsId: string };
-export type InstalledDetail = { fullName: string; partial: boolean };
+export type InstalledDetail = { fullName: string; partial: boolean; removed?: boolean; resetSelected?: boolean };
 export type InstallPhase = "idle" | "confirm" | "busy" | "done";
 export type FlowOp = "install" | "uninstall";
 
@@ -123,6 +123,7 @@ export class InstallFlow {
     inFlight += 1;
     let partial = false;
     let error = "";
+    let resetSelected: boolean | undefined;
     try {
       const msg: Record<string, unknown> = {
         type: op === "install" ? INSTALL_MSG : UNINSTALL_MSG,
@@ -130,7 +131,8 @@ export class InstallFlow {
         hacs_id: target.hacsId,
       };
       if (op === "uninstall" && selected) msg.selected_theme = selected;
-      await callWS(hass, msg);
+      const answer = await callWS<{ reset_selected?: unknown } | undefined>(hass, msg);
+      if (typeof answer?.reset_selected === "boolean") resetSelected = answer.reset_selected;
     } catch (err) {
       partial = codeOf(err) === "reload_failed";
       error = installErrorText(err, op, store);
@@ -143,7 +145,7 @@ export class InstallFlow {
       inFlight -= 1;
       this.host.requestUpdate();
     }
-    onDone({ fullName: target.fullName, partial });
+    onDone({ fullName: target.fullName, partial, ...(op === "uninstall" ? { removed: true, resetSelected } : {}) });
     if (epoch !== this.epoch) return;
     if (op === "uninstall") this.stale = true;
     this.set(partial ? "idle" : "done", error);

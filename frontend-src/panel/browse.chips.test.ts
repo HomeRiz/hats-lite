@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { atlasEnv } from "./browseAtlas";
-import { bundle, cards, catalog, makeHass, mount, settle, text } from "./browseTestKit";
+import { bundle, cards, catalog, makeHass, mount, settle, text, catalogQuery } from "./browseTestKit";
 import { stringsBrowse } from "./strings.browse";
 
 const realFetch = atlasEnv.fetchIndex;
@@ -100,7 +100,7 @@ describe("Installed chip", () => {
   it("uses the same rule for the Installed filter", async () => {
     const hass = hassWith("default", ["aurora"], [{ ...catalog[0], installed: false }, catalog[1]]);
     const el = await mount(hass);
-    el.shadowRoot!.querySelector<HTMLButtonElement>('[data-filter="installed"]')!.click();
+    catalogQuery<HTMLButtonElement>(el.shadowRoot!, '[data-filter="installed"]')!.click();
     await settle(el);
     expect(cards(el)).toHaveLength(1);
   });

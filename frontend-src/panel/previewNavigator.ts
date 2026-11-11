@@ -1,4 +1,5 @@
 import type { CatalogEntry, ThemeSelectedDetail } from "./contract";
+import { entryLabel } from "./browseDefault";
 import { navTarget, type NavDirection, type NavModel } from "./previewNav";
 import { stringsPreview as s } from "./strings.preview";
 
@@ -49,7 +50,7 @@ export class ThemeNavigator {
     return {
       index: this.index,
       total: this.list.length,
-      name: entry.full_name,
+      name: entryLabel(entry),
       pending: this.index !== this.loaded,
       error: this.error,
     };
@@ -80,7 +81,7 @@ export class ThemeNavigator {
     } catch {
       if (token !== this.token) return;
       this.index = this.loaded;
-      this.error = s.navFailed.replace("{name}", entry.full_name);
+      this.error = s.navFailed.replace("{name}", entryLabel(entry));
     }
     this.options.onChange();
   }

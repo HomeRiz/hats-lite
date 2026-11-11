@@ -60,8 +60,14 @@ export async function mount(hass: unknown) {
   return el;
 }
 
+const notDefault = (el: Element) => el.closest("article")?.dataset.key !== "default";
+
+export function catalogQuery<T extends Element = HTMLElement>(root: ParentNode, selector: string): T | null {
+  return Array.from(root.querySelectorAll<T>(selector)).find(notDefault) ?? null;
+}
+
 export function cards(el: HatsLiteBrowse) {
-  return Array.from(el.shadowRoot!.querySelectorAll<HTMLElement>("article.card"));
+  return Array.from(el.shadowRoot!.querySelectorAll<HTMLElement>("article.card:not([data-key=\"default\"])"));
 }
 
 export function names(el: HatsLiteBrowse) {
@@ -69,11 +75,11 @@ export function names(el: HatsLiteBrowse) {
 }
 
 export function previewButtons(el: HatsLiteBrowse) {
-  return Array.from(el.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.btn.primary"));
+  return Array.from(el.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.btn.primary")).filter(notDefault);
 }
 
 export function thumbs(el: HatsLiteBrowse) {
-  return Array.from(el.shadowRoot!.querySelectorAll<HTMLElement>("hats-lite-thumb"));
+  return Array.from(el.shadowRoot!.querySelectorAll<HTMLElement>("hats-lite-thumb")).filter(notDefault);
 }
 
 export function text(el: HatsLiteBrowse) {

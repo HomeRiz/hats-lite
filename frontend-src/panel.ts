@@ -20,13 +20,16 @@ import {
 } from "./panel/contract";
 import { restoreDetail } from "./pendingTrial";
 import { installedCandidate } from "./panel/scheduleCandidate";
-import { buildCandidate, installTarget, refreshInstalled, sameCandidate, uninstallTarget } from "./panel/candidate";
+import { buildCandidate, refreshInstalled, sameCandidate } from "./panel/candidate";
 import type { InstalledDetail } from "./panel/previewInstall";
 import type { NavDetail } from "./panel/previewNav";
 import { ThemeNavigator } from "./panel/previewNavigator";
 import { InkController } from "./panel/inkController";
 import { shellStyles } from "./panel/styles";
-import { MENU_ICON, panelDomId, renderFileThemes, renderInUse, renderTabNav, tabDomId, tabIndexForKey } from "./panel/panelParts";
+import { tabDomId, tabIndexForKey } from "./panel/panelParts";
+import { renderPanel } from "./panel/panelView";
+import { DEFAULT_THEME, defaultCandidate, isDefaultEntry } from "./panel/browseDefault";
+import { removedInUse } from "./panel/themeReset";
 import { ROUTE_TABS, itemFromFullName, type RouteItem, type RouteTab } from "./panel/route";
 import { RouteTabs } from "./panel/routeTabs";
 import { strings } from "./panel/strings";
@@ -49,6 +52,7 @@ export class HatsLitePanel extends LitElement {
     peopleOk: { state: true },
     modsOk: { state: true },
     modsLink: { state: true },
+    resetNotice: { state: true },
   };
 
   static styles = shellStyles;
@@ -68,10 +72,11 @@ export class HatsLitePanel extends LitElement {
   peopleOk = true;
   modsOk = false;
   modsLink: RouteItem | null = null;
+  resetNotice = "";
   private ink = new InkController(this);
   private probed = false;
   private previewItem: RouteItem | null = null;
-  private installedNames: string[] = [];
+  installedNames: string[] = [];
   private bundles = new BundleCache();
   private known = new KnownNames();
   private pickToken = 0;
@@ -92,18 +97,19 @@ export class HatsLitePanel extends LitElement {
     },
   });
 
-  private get tabs(): readonly RouteTab[] {
+  get tabs(): readonly RouteTab[] {
     return ROUTE_TABS.filter((id) => (id === "people" ? this.peopleOk : id === "mods" ? this.modsOk : true));
   }
 
-  private rendered = new Set<RouteTab>(["browse"]);
+  rendered = new Set<RouteTab>(["browse"]);
 
   private showTab(id: RouteTab): void {
     this.rendered.add(id);
+    this.resetNotice = "";
     this.tab = id;
   }
 
-  private select(id: RouteTab, opening = false): void {
+  select(id: RouteTab, opening = false): void {
     this.routes.choose(id, id === "preview" ? this.previewItem : null, opening);
   }
 
@@ -118,7 +124,7 @@ export class HatsLitePanel extends LitElement {
     this.renderRoot.querySelector<HTMLElement>(`#${tabDomId(id)}`)?.focus();
   }
 
-  private onTabKey = (event: KeyboardEvent): void => {
+  onTabKey = (event: KeyboardEvent): void => {
     const tabs = this.tabs;
     const next = tabIndexForKey(event.key, tabs.indexOf(this.tab), tabs.length);
     if (next === null) return;
@@ -128,7 +134,7 @@ export class HatsLitePanel extends LitElement {
     void this.focusTab(target);
   };
 
-  private onMenu = (): void => {
+  onMenu = (): void => {
     this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
   };
 
@@ -176,7 +182,7 @@ export class HatsLitePanel extends LitElement {
     return this.renderRoot.querySelector<HatsLiteBrowse>("hats-lite-browse");
   }
 
-  private navigator = new ThemeNavigator({
+  navigator = new ThemeNavigator({
     open: (target) => {
       const gallery = this.gallery();
       if (!gallery) return Promise.reject(new Error("gallery missing"));
@@ -186,7 +192,31 @@ export class HatsLitePanel extends LitElement {
     onChange: () => this.requestUpdate(),
   });
 
+  private showUnlisted(candidate: PreviewCandidate, mode: PreviewMode | undefined): void {
+    this.pickToken += 1;
+    this.fileStatus = "";
+    this.entry = null;
+    this.fileThemes = {};
+    this.fileNames = [];
+    this.chosenName = candidate.name;
+    this.candidate = candidate;
+    this.previewMode = mode;
+    this.previewItem = null;
+  }
+
+  private setTheme(theme: string): void {
+    const darkMode = this.hass?.themes?.darkMode;
+    this.dispatchEvent(
+      new CustomEvent("settheme", {
+        bubbles: true,
+        composed: true,
+        detail: restoreDetail(darkMode === undefined ? { theme } : { theme, dark: darkMode }),
+      }),
+    );
+  }
+
   private showBundle(detail: ThemeSelectedDetail): void {
+    if (isDefaultEntry(detail?.entry)) return this.showUnlisted(defaultCandidate(), this.previewMode);
     const names = Object.keys(detail?.themes ?? {});
     if (names.length === 0) return;
     const first = detail.theme && names.includes(detail.theme) ? detail.theme : (visibleThemeNames(names)[0] ?? names[0]);
@@ -206,7 +236,7 @@ export class HatsLitePanel extends LitElement {
     this.showBundle(detail);
   }
 
-  private onThemeSelected = (event: Event): void => {
+  onThemeSelected = (event: Event): void => {
     const detail = (event as CustomEvent<ThemeSelectedDetail & { mode?: PreviewMode }>).detail;
     if (Object.keys(detail?.themes ?? {}).length === 0) return;
     this.openDetail(detail);
@@ -215,40 +245,38 @@ export class HatsLitePanel extends LitElement {
     void this.focusTab("preview");
   };
 
-  private onPreviewTheme = (event: Event): void => {
+  onPreviewTheme = (event: Event): void => {
     const detail = (event as CustomEvent<{ theme?: string; dark?: boolean }>).detail;
     const picked = installedCandidate(this.hass, detail?.theme, detail?.dark);
     if (!picked) return;
     this.navigator.clear();
-    this.pickToken += 1;
-    this.fileStatus = "";
-    this.entry = null;
-    this.fileThemes = {};
-    this.fileNames = [];
-    this.chosenName = picked.candidate.name;
-    this.candidate = picked.candidate;
-    this.previewMode = picked.mode;
-    this.previewItem = null;
+    this.showUnlisted(picked.candidate, picked.mode);
     this.select("preview");
     void this.focusTab("preview");
   };
 
-  private onModOpened = (event: Event): void => {
+  onModOpened = (event: Event): void => {
     const detail = (event as CustomEvent<{ fullName?: unknown; category?: unknown }>).detail;
     this.routes.go("mods", itemFromFullName(detail?.fullName, detail?.category));
   };
 
-  private onModClosed = (): void => {
+  onModClosed = (): void => {
     this.routes.go("mods", null);
   };
 
-  private onNav = (event: Event): void => {
+  onNav = (event: Event): void => {
     const direction = (event as CustomEvent<NavDetail>).detail?.direction;
     if (direction === 1 || direction === -1) this.navigator.move(direction);
   };
 
-  private onInstalled = async (event: Event): Promise<void> => {
-    const fullName = (event as CustomEvent<InstalledDetail>).detail?.fullName;
+  onInstalled = async (event: Event): Promise<void> => {
+    const detail = (event as CustomEvent<InstalledDetail>).detail;
+    const fullName = detail?.fullName;
+    const removed = this.entry?.full_name === fullName ? this.fileNames : [];
+    if (detail?.removed && removedInUse(detail.resetSelected, this.hass?.themes?.theme, removed)) {
+      this.setTheme(DEFAULT_THEME);
+      this.resetNotice = strings.shell.resetApplied;
+    }
     const fresh = await this.gallery()?.refreshCatalog();
     const match = fresh?.find((e) => e.full_name === fullName);
     if (match && this.entry?.full_name === fullName) {
@@ -257,12 +285,12 @@ export class HatsLitePanel extends LitElement {
     }
   };
 
-  private onPreviewMode = (event: Event): void => {
+  onPreviewMode = (event: Event): void => {
     const mode = (event as CustomEvent<ModeChangeDetail>).detail?.mode;
     if (mode) this.previewMode = mode;
   };
 
-  private onFileThemeChange = (event: Event): void => {
+  onFileThemeChange = (event: Event): void => {
     const name = (event.target as HTMLSelectElement).value;
     if (Object.prototype.hasOwnProperty.call(this.fileThemes, name)) {
       this.pickToken += 1;
@@ -289,102 +317,15 @@ export class HatsLitePanel extends LitElement {
     }
   }
 
-  private onThemeSaved = (event: Event): void => {
+  onThemeSaved = (event: Event): void => {
     const detail = (event as CustomEvent<ThemeSavedDetail>).detail;
     if (typeof detail?.name !== "string") return;
-    const darkMode = this.hass?.themes?.darkMode;
-    this.dispatchEvent(
-      new CustomEvent("settheme", {
-        bubbles: true,
-        composed: true,
-        detail: restoreDetail(darkMode === undefined ? { theme: detail.name } : { theme: detail.name, dark: darkMode }),
-      }),
-    );
+    this.setTheme(detail.name);
     this.select("preview");
   };
 
   protected render() {
-    return html`
-      <div class="page">
-      <header class="header">
-        <div class="heading">
-          ${this.narrow
-            ? html`<button class="menu" type="button" aria-label=${strings.shell.menu} @click=${this.onMenu}>${MENU_ICON}</button>`
-            : nothing}
-          <h1 class="title">${strings.shell.title}</h1>
-        </div>
-        ${renderInUse(this.hass)}
-      </header>
-      ${renderTabNav(this.tabs, this.tab, (id) => this.select(id, true), this.onTabKey)}
-      <main
-        class="content"
-        @hats-lite-theme-selected=${this.onThemeSelected}
-        @hats-lite-theme-saved=${this.onThemeSaved}
-        @hats-lite-preview-theme=${this.onPreviewTheme}
-        @hats-lite-mod-opened=${this.onModOpened}
-        @hats-lite-mod-closed=${this.onModClosed}
-      >
-        <section
-          class="panel"
-          id=${panelDomId("browse")}
-          role="tabpanel"
-          aria-labelledby=${tabDomId("browse")}
-          tabindex="-1"
-          ?hidden=${this.tab !== "browse"}
-        >
-          <hats-lite-browse
-            .hass=${this.hass}
-            .installedThemes=${this.installedNames}
-            .currentTheme=${this.hass?.selectedTheme?.theme ?? this.hass?.themes?.theme ?? "default"}
-            .darkMode=${this.hass?.themes?.darkMode}
-          ></hats-lite-browse>
-        </section>
-        <section
-          class="panel"
-          id=${panelDomId("preview")}
-          role="tabpanel"
-          aria-labelledby=${tabDomId("preview")}
-          tabindex="-1"
-          ?hidden=${this.tab !== "preview"}
-        >
-          ${this.rendered.has("preview")
-            ? html`${renderFileThemes(visibleThemeNames(this.fileNames, this.chosenName), this.chosenName, this.fileStatus, this.onFileThemeChange)}
-              <hats-lite-preview
-                .hass=${this.hass}
-                .candidate=${this.candidate}
-                .mode=${this.previewMode}
-                .nav=${this.navigator.model()}
-                .install=${installTarget(this.entry, this.candidate)}
-                .uninstall=${uninstallTarget(this.entry, this.candidate)}
-                @hats-lite-mode-change=${this.onPreviewMode}
-                @hats-lite-preview-nav=${this.onNav}
-                @hats-lite-theme-installed=${this.onInstalled}
-              ></hats-lite-preview>`
-            : nothing}
-        </section>
-        <section
-          class="panel"
-          id=${panelDomId("designer")}
-          role="tabpanel"
-          aria-labelledby=${tabDomId("designer")}
-          tabindex="-1"
-          ?hidden=${this.tab !== "designer"}
-        >
-          ${this.rendered.has("designer")
-            ? html`<hats-lite-designer .hass=${this.hass}></hats-lite-designer>`
-            : nothing}
-        </section>
-        <section class="panel" id=${panelDomId("people")} role="tabpanel" aria-labelledby=${tabDomId("people")} tabindex="-1" ?hidden=${this.tab !== "people"}>
-          ${this.rendered.has("people") && this.peopleOk ? html`<hats-lite-people .hass=${this.hass}></hats-lite-people>` : nothing}
-        </section>
-        <section class="panel" id=${panelDomId("mods")} role="tabpanel" aria-labelledby=${tabDomId("mods")} tabindex="-1" ?hidden=${this.tab !== "mods"}>
-          ${this.rendered.has("mods") && this.modsOk
-            ? html`<hats-lite-mods .hass=${this.hass} .active=${this.tab === "mods"} .deepLink=${this.modsLink}></hats-lite-mods>`
-            : nothing}
-        </section>
-      </main>
-      </div>
-    `;
+    return renderPanel(this);
   }
 }
 

@@ -91,3 +91,7 @@ export function renderFileThemes(
     </label>
   `;
 }
+
+export function renderNotice(text: string): TemplateResult {
+  return html`<p class="notice" role="status">${text}</p>`;
+}

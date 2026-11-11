@@ -202,7 +202,7 @@ describe("uninstall flow", () => {
     el.addEventListener("hats-lite-theme-installed", done);
     await confirmRemoval(el);
     await vi.waitFor(() => expect(done).toHaveBeenCalledTimes(1));
-    expect(done.mock.calls[0][0].detail).toEqual({ fullName: "owner/ocean", partial: false });
+    expect(done.mock.calls[0][0].detail).toEqual({ fullName: "owner/ocean", partial: false, removed: true });
     el.candidate = { ...installed, installed: false, canApply: false };
     el.install = target;
     el.uninstall = null;
