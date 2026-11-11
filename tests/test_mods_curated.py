@@ -115,6 +115,10 @@ def test_loader_tolerates_missing_oversized_and_garbage(tmp_path):
         ("/hacsfiles/lovelace-mushroom/mushroom.js?hacstag=12", "hacsfiles/lovelace-mushroom"),
         ("/hacsfiles/Bubble-Card/bubble-card.js", "hacsfiles/bubble-card"),
         ("/hacsfiles/%62utton-card/x.js", "hacsfiles/button-card"),
+        ("/local/community/lovelace-mushroom/mushroom.js?v=4", "hacsfiles/lovelace-mushroom"),
+        ("/local/community/Bubble-Card/bubble-card.js", "hacsfiles/bubble-card"),
+        ("/local/community/%62utton-card/button-card.js", "hacsfiles/button-card"),
+        ("/local/community/lovelace-layout-card/sub/layout-card.js", "hacsfiles/lovelace-layout-card"),
     ],
 )
 def test_resource_keys_match(url, key):
@@ -140,6 +144,15 @@ def test_resource_keys_match(url, key):
         "/hacsfiles/card%5C..%5Cx/x.js",
         "/hacsfiles/./x.js",
         "/hacsfiles//x.js",
+        "/local/community",
+        "/local/community/",
+        "/local/community/card",
+        "/local/community/../uix/uix.js",
+        "/local/community/%2e%2e/x.js",
+        "/local/community/card%2F..%2Fx/x.js",
+        "/local/community//x.js",
+        "/local/Community/card/x.js",
+        "/other/community/card/x.js",
         "/" + "a" * 200 + "/x.js",
         "/uix/" + "a" * 3000,
     ],
@@ -158,6 +171,11 @@ def test_resource_keys_prefix_is_case_sensitive_and_tolerates_garbage():
 
 def test_resource_keys_bounded_count():
     items = [{"url": f"/hacsfiles/d{n}/x.js"} for n in range(5000)]
+    assert len(mods_curated.resource_keys(items)) <= mods_curated.MAX_KEYS
+
+
+def test_resource_keys_bounded_count_for_marketplace_paths():
+    items = [{"url": f"/local/community/d{n}/x.js"} for n in range(5000)]
     assert len(mods_curated.resource_keys(items)) <= mods_curated.MAX_KEYS
 
 
