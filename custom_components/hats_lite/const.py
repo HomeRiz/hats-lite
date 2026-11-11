@@ -1,6 +1,7 @@
 DOMAIN = "hats_lite"
 STATIC_URL = "/hats_lite_static"
-PANEL_PATH = "hats-lite"
+PANEL_PATH = "themes"
+LEGACY_PANEL_PATH = "hats-lite"
 PANEL_ELEMENT = "hats-lite-panel"
 MAX_THEME_BYTES = 1_048_576
 MAX_UPLOAD_BYTES = 8_388_608

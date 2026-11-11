@@ -2,7 +2,7 @@ import re
 
 from homeassistant.components.frontend import DATA_PANELS
 
-from .const import DOMAIN, PANEL_PATH
+from .const import DOMAIN, LEGACY_PANEL_PATH, PANEL_PATH
 
 OPTION_ADVANCED = "advanced_path"
 MAX_PATH = 200
@@ -28,7 +28,8 @@ def _detect(hass):
     panels = hass.data.get(DATA_PANELS) or {}
     for key in sorted(panels):
         panel = panels[key]
-        if key == PANEL_PATH or getattr(panel, "frontend_url_path", None) == PANEL_PATH:
+        own = (PANEL_PATH, LEGACY_PANEL_PATH)
+        if key in own or getattr(panel, "frontend_url_path", None) in own:
             continue
         path = getattr(panel, "frontend_url_path", None) or key
         title = getattr(panel, "sidebar_title", None) or ""
