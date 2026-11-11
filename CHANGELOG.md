@@ -8,6 +8,10 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 
 - Support for the Home Assistant Marketplace: the catalog, the installed state and installing or removing a theme from the panel work through the Marketplace on Home Assistant 2026.11 and newer, and through HACS on older versions.
 
+### Changed
+
+- The panel moved from `/hats-lite` to `/themes`, and every tab and every theme or mod has its own address (`/themes/gallery`, `/themes/preview`, `/themes/designer`, `/themes/people`, `/themes/mods`, with `?owner=&repository=&category=` for an item). The old `/hats-lite` address redirects. If another integration already uses `/themes`, the panel stays at `/hats-lite`.
+
 ### Fixed
 
 - The Mods tab shows cards installed by the Marketplace as installed.

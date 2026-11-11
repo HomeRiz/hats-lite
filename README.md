@@ -39,6 +39,10 @@ Older Home Assistant versions, with HACS:
 4. Go to Settings, Devices and services, add the integration HATS Lite.
 5. Open Themes in the sidebar.
 
+## Addresses
+
+The panel opens at `/themes`. Each tab has its own address, so you can bookmark it or share it with another administrator: `/themes/gallery`, `/themes/preview`, `/themes/designer`, `/themes/people` and `/themes/mods`. A repository can be linked directly, like an item in the Marketplace: `/themes/preview?owner=<owner>&repository=<repository>&category=theme` opens the preview of a theme repository and `/themes/mods?owner=<owner>&repository=<repository>&category=plugin` opens a mod. The old address `/hats-lite` redirects to `/themes`.
+
 ## Limits
 
 - The preview shows color, shape and glass settings. Effects that depend on card-mod or UIX rules are not rendered in the preview.
