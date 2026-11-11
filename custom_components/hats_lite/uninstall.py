@@ -6,6 +6,7 @@ from homeassistant.components.frontend import DATA_DEFAULT_DARK_THEME, DATA_DEFA
 
 from . import install
 from .const import DOMAIN
+from .package_manager import find_backend
 from .theme_save import _defined_names, _yaml_paths
 
 _LOGGER = logging.getLogger(__name__)
@@ -83,9 +84,10 @@ async def async_uninstall_theme(hass, load_catalog, user_id, full_name, hacs_id,
     data = hass.data.get(DOMAIN)
     if data is None:
         raise install.InstallError(install.NOT_LOADED)
-    hacs = hass.data.get("hacs")
-    if hacs is None:
+    backend = find_backend(hass)
+    if backend is None:
         raise install.InstallError(install.HACS_UNAVAILABLE)
+    hacs = backend.manager
     hold = install.acquire(data)
     try:
         repo = await install.load_entry(hass, load_catalog, hacs, full_name, hacs_id)
