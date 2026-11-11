@@ -6,13 +6,14 @@ import {
   errorCode,
   canPreview,
   fetchModAsset,
-  hacsUrl,
+  modStoreLink,
   parseConfig,
   repoUrl,
   type ModEntry,
 } from "./modsData";
 import { modsStyles } from "./modsStyles";
 import { modsErrorMessage, stringsMods as s } from "./strings.mods";
+import { storeOf, withStore, type Store } from "./store";
 import { createPreviewCard, loadCardHelpers } from "./previewData";
 import { mockFor, mockHass } from "./modsMockCards";
 
@@ -45,15 +46,15 @@ const realCard: CardFactory = async (_hass, config) => {
   return createPreviewCard(helpers, config as { type?: string });
 };
 
-export function renderModLinks(mod: ModEntry, withHacs: boolean): TemplateResult {
+export function renderModLinks(mod: ModEntry, store: Store | null): TemplateResult {
   const repo = repoUrl(mod.full_name);
-  const hacs = withHacs ? hacsUrl(mod.full_name, mod.category) : null;
+  const href = store ? modStoreLink(store, mod.full_name, mod.category) : undefined;
   return html`
     ${repo
       ? html`<a class="link" href=${repo} target="_blank" rel="noopener noreferrer">${s.repository}</a>`
       : nothing}
-    ${hacs
-      ? html`<a class="link" id="hacs-link" href=${hacs} target="_blank" rel="noopener noreferrer">${s.openInHacs}</a>`
+    ${href && store
+      ? html`<a class="link" id="store-link" href=${href} target="_blank" rel="noopener noreferrer">${withStore(s.openInStore, store)}</a>`
       : nothing}
   `;
 }
@@ -356,7 +357,7 @@ export class HatsLiteModsPreview extends LitElement {
 
   private renderBody(mod: ModEntry) {
     if (mod.category === "integration") {
-      return html`<p class="notice" id="integration-note">${s.integrationNote}</p>`;
+      return html`<p class="notice" id="integration-note">${withStore(s.integrationNote, storeOf(this.hass))}</p>`;
     }
     if (mod.installed) {
       return html`
@@ -379,7 +380,7 @@ export class HatsLiteModsPreview extends LitElement {
     if (!mod) return html`<p class="muted">${s.nothingSelected}</p>`;
     return html`
       ${mod.pinned && mod.license ? html`<p class="muted" id="license">${s.license(mod.license)}</p>` : nothing}
-      <p class="links">${renderModLinks(mod, true)}</p>
+      <p class="links">${renderModLinks(mod, storeOf(this.hass))}</p>
       ${this.renderBody(mod)}
     `;
   }

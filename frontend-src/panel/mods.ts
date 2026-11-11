@@ -87,7 +87,7 @@ export class HatsLiteMods extends LitElement {
           ${mod.stars > 0 ? html`<span class="chip">${s.stars(mod.stars)}</span>` : nothing}
         </div>
         ${mod.description ? html`<p class="desc">${mod.description}</p>` : nothing}
-        <p class="links">${renderModLinks(mod, false)}</p>
+        <p class="links">${renderModLinks(mod, null)}</p>
       </li>
     `;
   }

@@ -4,11 +4,12 @@ import { isApplicable, isTryable } from "./previewData";
 import {
   EVENT_THEME_INSTALLED,
   InstallFlow,
-  hacsLink,
+  installLink,
   installLocked,
   type InstallTarget,
 } from "./previewInstall";
 import type { InstallModel } from "./previewInstallView";
+import { storeOf } from "./store";
 import { NAV_EVENT, navKeyDirection, navTarget, type NavDetail, type NavDirection, type NavModel } from "./previewNav";
 import { explicitMode, runTrial } from "./previewTrial";
 import { actionsModel, renderActions } from "./previewView";
@@ -103,6 +104,7 @@ export class PreviewActions implements ReactiveController {
     const admin = this.host.hass?.user?.is_admin === true;
     const target = this.host.install ?? this.host.uninstall;
     const pending = this.host.nav?.pending === true;
+    const store = storeOf(this.host.hass);
     return {
       show: !candidate.installed && !candidate.nameCollision,
       admin,
@@ -112,7 +114,8 @@ export class PreviewActions implements ReactiveController {
       locked: installLocked() || pending,
       error: this.flow.error,
       repoName: target?.fullName ?? candidate.name,
-      hacs: hacsLink(candidate.repoUrl),
+      store,
+      storeHref: installLink(store, candidate.repoUrl),
       canUninstall: admin && !!this.host.uninstall && candidate.installed && !candidate.nameCollision,
       stale: this.flow.stale,
       inUse: this.selected().toLowerCase() === candidate.name.toLowerCase(),

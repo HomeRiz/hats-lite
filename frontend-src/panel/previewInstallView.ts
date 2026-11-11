@@ -2,6 +2,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import { ifDefined } from "lit/directives/if-defined.js";
 import type { FlowOp, InstallPhase } from "./previewInstall";
 import { stringsPreview as s } from "./strings.preview";
+import { withStore, type Store } from "./store";
 
 export type InstallModel = {
   show: boolean;
@@ -12,7 +13,8 @@ export type InstallModel = {
   locked: boolean;
   error: string;
   repoName: string;
-  hacs: string | undefined;
+  store: Store;
+  storeHref: string | undefined;
   canUninstall: boolean;
   inUse: boolean;
   stale: boolean;
@@ -64,9 +66,9 @@ export function renderUninstall(m: InstallModel, h: InstallHandlers): TemplateRe
     ${m.inUse ? html`<p id="uninstall-hint" class="chip note">${s.uninstallSwitchFirst}</p>` : nothing}`;
 }
 
-function link(href: string | undefined): TemplateResult | Empty {
-  return href
-    ? html`<a class="chip link hacs-link" href=${href} target="_blank" rel="noopener noreferrer">${s.hacsLink}</a>`
+function link(m: InstallModel): TemplateResult | Empty {
+  return m.storeHref
+    ? html`<a class="chip link store-link" href=${m.storeHref} target="_blank" rel="noopener noreferrer">${withStore(s.openInStore, m.store)}</a>`
     : nothing;
 }
 
@@ -98,7 +100,7 @@ function confirmDialog(m: InstallModel, h: InstallHandlers): TemplateResult {
   const confirm = () => {
     if (!m.locked) h.onConfirm();
   };
-  const body = removal ? s.uninstallConfirmBody : s.installConfirmBody;
+  const body = withStore(removal ? s.uninstallConfirmBody : s.installConfirmBody, m.store);
   return html`
     <div class="install-dialog" role="alertdialog" aria-labelledby="install-title" aria-describedby="install-body" @keydown=${dialogKey(h)}>
       <strong id="install-title">${removal ? s.uninstallConfirmTitle : s.installConfirmTitle}</strong>
@@ -119,8 +121,8 @@ export function renderInstallExtras(m: InstallModel, h: InstallHandlers): Templa
   const status = announcement(m);
   const live = html`<span class="sr-only install-status" role="status">${status}</span>`;
   let note: TemplateResult | Empty = nothing;
-  if (m.show && !m.admin) note = html`<p class="chip note">${s.adminOnly}</p>`;
-  else if (m.show && !m.hasTarget) note = html`<p class="chip note">${s.installViaHacs}</p>`;
+  if (m.show && !m.admin) note = html`<p class="chip note">${withStore(s.adminOnly, m.store)}</p>`;
+  else if (m.show && !m.hasTarget) note = html`<p class="chip note">${withStore(s.installViaStore, m.store)}</p>`;
   const fallback = m.show && (!m.admin || !m.hasTarget || m.error !== "");
-  return html`${note}${dialog}${live}${fallback ? link(m.hacs) : nothing}`;
+  return html`${note}${dialog}${live}${fallback ? link(m) : nothing}`;
 }

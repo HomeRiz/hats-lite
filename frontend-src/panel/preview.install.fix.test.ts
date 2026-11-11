@@ -5,6 +5,7 @@ import type { HatsLitePreview } from "./preview";
 import { INSTALL_MSG, INSTALL_TIMEOUT_MS } from "./previewInstall";
 import { NAV_EVENT } from "./previewNav";
 import { stringsPreview as s } from "./strings.preview";
+import { withStore } from "./store";
 
 const base: PreviewCandidate = {
   name: "Ocean",
@@ -103,7 +104,7 @@ describe("waiting for the theme to appear", () => {
     await el.updateComplete;
     expect(done).toHaveBeenCalledTimes(2);
     expect(done.mock.calls[1][0].detail).toEqual({ fullName: "owner/ocean", partial: true });
-    expect(q(el, ".error")!.textContent).toContain(s.installTimeout);
+    expect(q(el, ".error")!.textContent).toContain(withStore(s.installTimeout, "generic"));
     expect(q(el, ".install")).not.toBeNull();
   });
 

@@ -1,6 +1,7 @@
 import { callWS } from "../lib/ws";
 import type { PanelHass } from "./contract";
 import { errorCode } from "./peopleData";
+import { storeLink, type Store } from "./store";
 
 export { errorCode };
 
@@ -96,10 +97,10 @@ export function canPreview(mod: Pick<ModEntry, "pinned" | "category">): boolean 
   return mod.pinned && mod.category === "plugin";
 }
 
-export function hacsUrl(fullName: string, category: ModCategory = "plugin"): string | null {
-  if (!REPO.test(fullName)) return null;
-  const [owner, repo] = fullName.split("/");
-  return `https://my.home-assistant.io/redirect/hacs_repository/?owner=${encodeURIComponent(owner)}&repository=${encodeURIComponent(repo)}&category=${category}`;
+export function modStoreLink(store: Store, fullName: string, category: ModCategory): string | undefined {
+  if (!REPO.test(fullName)) return undefined;
+  const [owner = "", repository = ""] = fullName.split("/");
+  return storeLink(store, owner, repository, category);
 }
 
 export function guessTag(mod: Pick<ModEntry, "tag" | "filename">): string {

@@ -23,7 +23,7 @@ export const stringsMods = {
   } as Record<string, string>,
   integrationChip: "Integration",
   integrationNote:
-    "This is a HACS integration. It acts on your real dashboard and cannot be previewed in the sandbox. Install it through HACS.",
+    "This integration comes from {store}. It acts on your real dashboard and cannot be previewed in the sandbox. Install it through {store}.",
   empty: "No mods match.",
   truncated: "The list is incomplete. Narrow the search to find more.",
   installedChip: "Installed",
@@ -31,7 +31,7 @@ export const stringsMods = {
   stars: (count: number) => `${count} stars`,
   license: (license: string) => `License: ${license}`,
   repository: "Repository",
-  openInHacs: "Open in HACS",
+  openInStore: "Open in {label}",
   select: (name: string) => `Preview ${name}`,
   nothingSelected: "Select a mod to see its preview.",
   installedNote: "Already in your dashboard resources",

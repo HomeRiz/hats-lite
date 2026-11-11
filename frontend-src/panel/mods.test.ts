@@ -7,6 +7,7 @@ import type { PanelHass } from "./contract";
 import type { SandboxOptions } from "../sandbox/frame";
 import { DISCLOSURE_AUTHOR, DISCLOSURE_OWN, ISOLATION_NOTE } from "../sandbox/protocol";
 import { stringsMods as s } from "./strings.mods";
+import { withStore } from "./store";
 
 type Call = { type: string; [key: string]: unknown };
 
@@ -162,7 +163,7 @@ describe("hats-lite-mods preview", () => {
     expect(pv("#unpinned")?.textContent).toBe(s.unpinned);
     expect(pv("#run")).toBeNull();
     expect(pv("#license")).toBeNull();
-    const hacs = pv<HTMLAnchorElement>("#hacs-link")!;
+    const hacs = pv<HTMLAnchorElement>("#store-link")!;
     expect(hacs.href).toBe(
       "https://my.home-assistant.io/redirect/hacs_repository/?owner=o&repository=gamma&category=plugin",
     );

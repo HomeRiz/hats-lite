@@ -7,7 +7,7 @@ import {
   filterMods,
   guessTag,
   canPreview,
-  hacsUrl,
+  modStoreLink,
   MOD_KINDS,
   modsSupported,
   parseConfig,
@@ -74,7 +74,7 @@ describe("modsData", () => {
   it("builds links only for valid repositories", () => {
     expect(repoUrl("o/r")).toBe("https://github.com/o/r");
     expect(repoUrl("o/r/x")).toBeNull();
-    expect(hacsUrl("o/r")).toBe(
+    expect(modStoreLink("hacs", "o/r", "plugin")).toBe(
       "https://my.home-assistant.io/redirect/hacs_repository/?owner=o&repository=r&category=plugin",
     );
   });
@@ -127,10 +127,16 @@ describe("modsData", () => {
     expect(MOD_KINDS).toEqual(["styling", "cards", "layout", "templating", "chrome"]);
   });
 
-  it("builds the HACS link for the right category", () => {
-    expect(hacsUrl("o/r", "integration")).toContain("category=integration");
-    expect(hacsUrl("o/r")).toContain("category=plugin");
-    expect(hacsUrl("bad name", "integration")).toBeNull();
+  it("builds the store link for the right category", () => {
+    expect(modStoreLink("hacs", "o/r", "integration")).toContain("category=integration");
+    expect(modStoreLink("marketplace", "o/r", "plugin")).toBe("/marketplace/repository?owner=o&repository=r&category=plugin");
+    expect(modStoreLink("generic", "o/r", "plugin")).toContain("category=plugin");
+    expect(modStoreLink("marketplace", "bad name", "integration")).toBeUndefined();
+    expect(modStoreLink("hacs", "o", "integration")).toBeUndefined();
+    for (const store of ["marketplace", "hacs", "generic"] as const) {
+      expect(modStoreLink(store, "o/r/x", "plugin")).toBeUndefined();
+      expect(modStoreLink(store, "o", "plugin")).toBeUndefined();
+    }
   });
 
   it("only allows sandbox previews for pinned plugins", () => {
