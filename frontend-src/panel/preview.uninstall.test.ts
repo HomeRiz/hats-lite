@@ -4,6 +4,7 @@ import "./preview";
 import type { HatsLitePreview } from "./preview";
 import { INSTALL_MSG, INSTALL_TIMEOUT_MS, UNINSTALL_MSG } from "./previewInstall";
 import { stringsPreview as s } from "./strings.preview";
+import { withStore } from "./store";
 
 const installed: PreviewCandidate = {
   name: "Ocean",
@@ -83,7 +84,7 @@ describe("uninstall visibility", () => {
     expect(q(el, ".uninstall")).toBeNull();
   });
 
-  it("is hidden without a HACS target or for a theme that is not installed", async () => {
+  it("is hidden without a store target or for a theme that is not installed", async () => {
     const { hass } = makeHass(true, async () => ({}));
     expect(q(await mount(hass, null), ".uninstall")).toBeNull();
     document.body.innerHTML = "";
@@ -132,7 +133,7 @@ describe("theme in use", () => {
     expect(q(el, ".in-use-chip")!.textContent!.trim()).toBe(s.inUseChip);
   });
 
-  it("shows an In use chip when there is no HACS target", async () => {
+  it("shows an In use chip when there is no store target", async () => {
     const { hass } = makeHass(true, async () => ({}), "Ocean");
     const el = await mount(hass, null);
     expect(q(el, ".apply")).toBeNull();
@@ -149,12 +150,12 @@ describe("theme in use", () => {
 });
 
 describe("uninstall flow", () => {
-  it("confirms first, saying HACS deletes the files, and Escape cancels", async () => {
+  it("confirms first, saying the store deletes the files, and Escape cancels", async () => {
     const { hass, calls } = makeHass(true, async () => ({}));
     const el = await mount(hass);
     await click(el, ".uninstall");
     const dialog = q(el, "[role='alertdialog']")!;
-    expect(dialog.textContent).toContain(s.uninstallConfirmBody.replace("{repo}", "owner/ocean"));
+    expect(dialog.textContent).toContain(withStore(s.uninstallConfirmBody, "generic").replace("{repo}", "owner/ocean"));
     expect(q(el, ".install-confirm")!.classList.contains("danger")).toBe(true);
     await vi.waitFor(() => expect(el.shadowRoot!.activeElement).toBe(q(el, ".install-confirm")));
     dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, composed: true }));
@@ -201,7 +202,7 @@ describe("uninstall flow", () => {
     el.addEventListener("hats-lite-theme-installed", done);
     await confirmRemoval(el);
     await vi.waitFor(() => expect(done).toHaveBeenCalledTimes(1));
-    expect(done.mock.calls[0][0].detail).toEqual({ fullName: "owner/ocean", partial: false });
+    expect(done.mock.calls[0][0].detail).toEqual({ fullName: "owner/ocean", partial: false, removed: true });
     el.candidate = { ...installed, installed: false, canApply: false };
     el.install = target;
     el.uninstall = null;
@@ -224,7 +225,7 @@ describe("uninstall flow", () => {
     await el.updateComplete;
     expect(done).toHaveBeenCalledTimes(2);
     expect(done.mock.calls[1][0].detail.partial).toBe(true);
-    expect(q(el, ".error")!.textContent).toContain(s.uninstallTimeout);
+    expect(q(el, ".error")!.textContent).toContain(withStore(s.uninstallTimeout, "generic"));
     expect(q(el, ".uninstall")!.getAttribute("aria-disabled")).toBe("true");
   });
 
@@ -236,7 +237,7 @@ describe("uninstall flow", () => {
       const el = await mount(hass);
       await confirmRemoval(el);
       await vi.waitFor(() => expect(q(el, ".error")).not.toBeNull());
-      expect(q(el, ".error")!.textContent).toContain(ERRORS[code]);
+      expect(q(el, ".error")!.textContent).toContain(withStore(ERRORS[code], "generic"));
       expect(el.shadowRoot!.textContent).not.toContain("SECRET");
       expect(q(el, ".uninstall")!.getAttribute("aria-disabled")).toBe("false");
       el.remove();
@@ -254,7 +255,7 @@ describe("uninstall flow", () => {
     await vi.waitFor(() => expect(done).toHaveBeenCalledTimes(1));
     expect(done.mock.calls[0][0].detail.partial).toBe(true);
     await el.updateComplete;
-    expect(q(el, ".error")!.textContent).toContain(s.uninstallErrors.reload_failed);
+    expect(q(el, ".error")!.textContent).toContain(withStore(s.uninstallErrors.reload_failed, "generic"));
     expect(q(el, ".error")!.textContent).not.toContain("downloaded");
     expect(q(el, ".uninstall")!.getAttribute("aria-disabled")).toBe("true");
     expect((q(el, ".apply") as HTMLButtonElement).disabled).toBe(true);
@@ -290,7 +291,7 @@ describe("operation specific wording", () => {
     const el = await mount(hass);
     await confirmRemoval(el);
     await vi.waitFor(() => expect(q(el, ".error")).not.toBeNull());
-    expect(q(el, ".error")!.textContent).toContain(s.uninstallErrors.unknown);
+    expect(q(el, ".error")!.textContent).toContain(withStore(s.uninstallErrors.unknown, "generic"));
     expect(q(el, ".error")!.textContent).not.toContain("The install did");
     expect(el.shadowRoot!.textContent).not.toContain("socket closed");
   });
@@ -310,7 +311,7 @@ describe("operation specific wording", () => {
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(INSTALL_TIMEOUT_MS);
     await el.updateComplete;
-    expect(q(el, ".error")!.textContent).toContain(s.uninstallTimeout);
+    expect(q(el, ".error")!.textContent).toContain(withStore(s.uninstallTimeout, "generic"));
     expect((q(el, ".apply") as HTMLButtonElement).disabled).toBe(true);
     expect((q(el, ".try") as HTMLButtonElement).disabled).toBe(true);
     expect(q(el, ".uninstall")!.getAttribute("aria-disabled")).toBe("true");

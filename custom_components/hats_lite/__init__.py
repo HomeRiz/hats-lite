@@ -7,9 +7,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from . import api, real_api, scheduler, services
+from . import api, real_api, scheduler, services, theme_hide
 from .api_effective import async_listen_user_removed
-from .const import DOMAIN, PANEL_ELEMENT, PANEL_PATH, STATIC_URL
+from .const import DOMAIN, LEGACY_PANEL_PATH, PANEL_ELEMENT, PANEL_PATH, STATIC_URL
 from .store import LiteStore
 from .views import BackgroundUploadView
 
@@ -39,6 +39,40 @@ def _prepare_frontend_dir(path):
     return os.path.isdir(path)
 
 
+async def _register_panel(hass, path, module_url, sidebar):
+    try:
+        await panel_custom.async_register_panel(
+            hass,
+            frontend_url_path=path,
+            webcomponent_name=PANEL_ELEMENT,
+            sidebar_title="Themes" if sidebar else None,
+            sidebar_icon="mdi:palette" if sidebar else None,
+            module_url=module_url,
+            require_admin=False,
+            embed_iframe=False,
+            config={},
+        )
+    except ValueError:
+        return False
+    return True
+
+
+async def _register_panels(hass, module_url):
+    registered = []
+    try:
+        for path in (PANEL_PATH, LEGACY_PANEL_PATH):
+            if await _register_panel(hass, path, module_url, True):
+                registered.append(path)
+                break
+        if registered == [PANEL_PATH] and await _register_panel(hass, LEGACY_PANEL_PATH, module_url, False):
+            registered.append(LEGACY_PANEL_PATH)
+    except Exception:
+        for path in registered:
+            frontend.async_remove_panel(hass, path, warn_if_unknown=False)
+        raise
+    return registered
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     store = LiteStore(Store(hass, 1, DOMAIN), Store(hass, 1, DOMAIN + ".v1_backup"))
     await store.async_load()
@@ -61,19 +95,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 [StaticPathConfig(STATIC_URL, FRONTEND_DIR, False)]
             )
         hass.data[HTTP_FLAG] = True
-    await panel_custom.async_register_panel(
-        hass,
-        frontend_url_path=PANEL_PATH,
-        webcomponent_name=PANEL_ELEMENT,
-        sidebar_title="Themes",
-        sidebar_icon="mdi:palette",
-        module_url=panel_url,
-        require_admin=False,
-        embed_iframe=False,
-        config={},
-    )
+    hass.data[DOMAIN]["panels"] = await _register_panels(hass, panel_url)
     frontend.add_extra_js_url(hass, applier_url)
     services.async_register(hass)
+    hass.data[DOMAIN]["theme_hide_stop"] = theme_hide.async_setup(hass, entry)
     entry.async_on_unload(async_listen_user_removed(hass))
     entry.async_on_unload(scheduler.async_listen_config(hass))
     await api.async_restore_watchdogs(hass)
@@ -85,8 +110,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     services.async_remove(hass)
     scheduler.async_stop(hass)
     api.cancel_all_watchdogs(hass)
-    frontend.async_remove_panel(hass, PANEL_PATH, warn_if_unknown=False)
     held = hass.data.get(DOMAIN) or {}
+    for path in held.get("panels", ()):
+        frontend.async_remove_panel(hass, path, warn_if_unknown=False)
+    held.get("theme_hide_stop", lambda: None)()
+    await theme_hide.async_restore(hass)
     frontend.remove_extra_js_url(hass, held.get("applier_url", APPLIER_URL))
     hass.data.pop(DOMAIN, None)
     return True

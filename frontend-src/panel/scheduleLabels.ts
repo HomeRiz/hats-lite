@@ -1,6 +1,7 @@
 import type { Day, DayItem } from "./scheduleData";
 import { splitDay, splitMonth } from "./scheduleData";
 import { stringsSchedule as t } from "./strings.schedule";
+import { themeLabel } from "./peopleThemes";
 
 export function fullDate(key: string, language?: string): string {
   const parts = splitDay(key);
@@ -54,7 +55,7 @@ export function winnerItem(day: Day): DayItem | undefined {
 export function loserNames(day: Day): string {
   return day.items
     .filter((item) => item !== winnerItem(day))
-    .map((item) => `${t.itemName(item)} (${item.theme})`)
+    .map((item) => `${t.itemName(item)} (${themeLabel(item.theme)})`)
     .join(", ");
 }
 
@@ -65,8 +66,8 @@ export function daySummary(day: Day | undefined, optOut: boolean): string {
   const winner = winnerItem(day);
   const from = winner ? t.itemName(winner) : day.winner.source;
   const theme = day.winner.selection.theme;
-  if (day.conflict) return t.conflictSummary(theme, from, loserNames(day));
-  return t.winnerSummary(theme, from);
+  if (day.conflict) return t.conflictSummary(themeLabel(theme), from, loserNames(day));
+  return t.winnerSummary(themeLabel(theme), from);
 }
 
 export function whenText(when: Date, locale?: string, zone?: string): string {

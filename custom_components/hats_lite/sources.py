@@ -4,6 +4,7 @@ import aiohttp
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .catalog import CatalogError
+from .package_manager import MARKETPLACE, find_backend
 from .theme_fetch import ThemeFetchError, fetch_checked
 
 PUBLIC_CATALOG_URL = "https://data-v2.hacs.xyz/theme/data.json"
@@ -12,21 +13,20 @@ CHUNK_SIZE = 65536
 CATALOG_TIMEOUT = 15
 
 
-async def hacs_loader(hass):
+async def manager_loader(hass):
     try:
-        hacs = hass.data.get("hacs")
-        if hacs is None:
+        backend = find_backend(hass)
+        if backend is None:
             return None
-        repositories = getattr(hacs, "repositories", None)
-        items = getattr(repositories, "list_all", None)
-        if callable(items):
-            items = items()
+        items = backend.items()
         if items is None:
             return None
         out = []
-        for repo in list(items):
+        for repo in items:
             data = getattr(repo, "data", None)
             if data is None:
+                continue
+            if backend.kind == MARKETPLACE and not getattr(data, "last_fetched", True):
                 continue
             out.append(
                 {
@@ -39,9 +39,14 @@ async def hacs_loader(hass):
                     "id": getattr(data, "id", None),
                 }
             )
-        return out
+        return out, backend.kind
     except Exception:
         return None
+
+
+async def hacs_loader(hass):
+    found = await manager_loader(hass)
+    return None if found is None else found[0]
 
 
 async def _catalog_reader(resp):

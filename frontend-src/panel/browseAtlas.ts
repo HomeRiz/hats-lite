@@ -1,96 +1,11 @@
 import type { PreviewMode } from "./contract";
+import { atlasTile, fitsAtlas, parseAtlasIndex, type AtlasIndex, type AtlasSize, type AtlasTile, type AtlasTheme } from "./browseAtlasIndex";
+
+export { atlasTile, parseAtlasIndex, type AtlasIndex, type AtlasTile, type AtlasTheme } from "./browseAtlasIndex";
 
 export const ATLAS_BASE = "/hats_lite_static/thumbs";
-const MAX_COLUMNS = 64;
-const MAX_ROWS = 2000;
-
-export type AtlasTheme = {
-  full_name: string;
-  name: string;
-  index: number;
-  commit: string | null;
-  license: string | null;
-  dark: boolean;
-  light: boolean;
-  glass: boolean;
-};
-
-export type AtlasIndex = {
-  columns: number;
-  rows: number;
-  version: string;
-  themes: Map<string, AtlasTheme>;
-};
 
 export type AtlasState = "pending" | "ok" | "none";
-
-export type AtlasTile = {
-  sizeX: number;
-  sizeY: number;
-  posX: number;
-  posY: number;
-};
-
-export function atlasTile(index: number, columns: number, rows: number): AtlasTile {
-  const col = index % columns;
-  const row = Math.floor(index / columns);
-  return {
-    sizeX: columns * 100,
-    sizeY: rows * 100,
-    posX: columns > 1 ? (col / (columns - 1)) * 100 : 0,
-    posY: rows > 1 ? (row / (rows - 1)) * 100 : 0,
-  };
-}
-
-function isCount(value: unknown, max: number): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value > 0 && value <= max;
-}
-
-function parseTheme(raw: unknown, slots: number, seen: Set<number>): AtlasTheme | null {
-  if (typeof raw !== "object" || raw === null) return null;
-  const item = raw as Record<string, unknown>;
-  const index = item.index;
-  if (typeof item.full_name !== "string" || typeof item.name !== "string") return null;
-  if (typeof index !== "number" || !Number.isInteger(index)) return null;
-  if (index < 0 || index >= slots || seen.has(index)) return null;
-  seen.add(index);
-  return {
-    full_name: item.full_name,
-    name: item.name,
-    index,
-    commit: typeof item.commit === "string" && item.commit ? item.commit : null,
-    license: typeof item.license === "string" && item.license ? item.license : null,
-    dark: item.dark === true,
-    light: item.light === true,
-    glass: item.glass === true,
-  };
-}
-
-function versionKey(hash: unknown, generated: unknown): string | null {
-  for (const value of [hash, generated]) {
-    if (typeof value === "string" && value) return value;
-  }
-  const present = (value: unknown) => value !== undefined && value !== null;
-  return present(hash) || present(generated) ? null : "";
-}
-
-export function parseAtlasIndex(raw: unknown): AtlasIndex | null {
-  if (typeof raw !== "object" || raw === null) return null;
-  const data = raw as Record<string, unknown>;
-  const { columns, rows, themes } = data;
-  if (data.version !== 1 || !isCount(columns, MAX_COLUMNS) || !isCount(rows, MAX_ROWS)) return null;
-  if (!Array.isArray(themes)) return null;
-  const seen = new Set<number>();
-  const map = new Map<string, AtlasTheme>();
-  for (const item of themes) {
-    const theme = parseTheme(item, columns * rows, seen);
-    if (theme) map.set(theme.full_name, theme);
-  }
-  const version = versionKey(data.hash, data.generated);
-  if (version === null) return null;
-  return { columns, rows, version, themes: map };
-}
-
 const ATLAS_INDEX_TIMEOUT_MS = 6000;
 const ATLAS_IMAGE_TIMEOUT_MS = 20000;
 const ATLAS_RETRY_MS = 30000;
@@ -98,18 +13,23 @@ const ATLAS_RETRY_MS = 30000;
 export class AtlasMissing extends Error {}
 class AtlasCancelled extends Error {}
 
+const MAX_RECOVERY_FAILURES = 2;
+
+export type ImageResult = boolean | AtlasSize;
+
 export const atlasEnv = {
-  fetchIndex(signal?: AbortSignal): Promise<unknown> {
-    return fetch(`${ATLAS_BASE}/index.json`, { credentials: "same-origin", signal }).then((res) => {
+  recovery: { succeeded: false, failures: 0 },
+  fetchIndex(signal?: AbortSignal, cache: RequestCache = "no-cache"): Promise<unknown> {
+    return fetch(`${ATLAS_BASE}/index.json`, { credentials: "same-origin", cache, signal }).then((res) => {
       if (res.status === 404) throw new AtlasMissing("index missing");
       if (!res.ok) throw new Error("index unavailable");
       return res.json();
     });
   },
-  loadImage(url: string, signal?: AbortSignal): Promise<boolean> {
-    return new Promise((resolve) => {
+  loadImage(url: string, signal?: AbortSignal): Promise<ImageResult> {
+    return new Promise<ImageResult>((resolve) => {
       const img = new Image();
-      const done = (ok: boolean) => {
+      const done = (ok: ImageResult) => {
         signal?.removeEventListener("abort", onAbort);
         resolve(ok);
       };
@@ -117,7 +37,9 @@ export const atlasEnv = {
         img.src = "";
         done(false);
       };
-      img.onload = () => done(true);
+      img.onload = () => {
+        done({ width: img.naturalWidth, height: img.naturalHeight });
+      };
       img.onerror = () => done(false);
       signal?.addEventListener("abort", onAbort);
       img.src = url;
@@ -166,6 +88,8 @@ export class AtlasStore {
   private started = false;
   private images = new Map<PreviewMode, boolean | undefined>();
   private wanted = new Set<PreviewMode>();
+  private generation = 0;
+  private recovering = false;
   private retries = new Map<() => void, ReturnType<typeof setTimeout> | undefined>();
   private active = new Set<Inflight>();
   private disposed = false;
@@ -252,18 +176,59 @@ export class AtlasStore {
   }
 
   private async loadImage(mode: PreviewMode, mayRetry: boolean): Promise<void> {
+    const index = this.index;
+    const generation = this.generation;
+    if (!index) return;
     const url = this.imageUrl(mode);
-    let ok = false;
+    let result: ImageResult = false;
     try {
-      ok = await withDeadline(this.active, ATLAS_IMAGE_TIMEOUT_MS, (signal) =>
-        atlasEnv.loadImage(url, signal),
-      );
+      result = await withDeadline(this.active, ATLAS_IMAGE_TIMEOUT_MS, (signal) => atlasEnv.loadImage(url, signal));
     } catch (err) {
       if (err instanceof AtlasCancelled) return;
+    }
+    if (generation !== this.generation) return;
+    const ok = result !== false;
+    if (ok && typeof result === "object" && !fitsAtlas(index, result)) {
+      this.mismatch(mode);
+      return;
     }
     this.images.set(mode, ok);
     this.onChange();
     if (!ok && mayRetry) this.later(() => void this.loadImage(mode, false));
+  }
+
+  private mismatch(mode: PreviewMode): void {
+    this.images.set(mode, false);
+    this.onChange();
+    const recovery = atlasEnv.recovery;
+    if (this.recovering || this.disposed || recovery.succeeded || recovery.failures >= MAX_RECOVERY_FAILURES) return;
+    void this.recover();
+  }
+
+  private async recover(): Promise<void> {
+    this.recovering = true;
+    let fresh: AtlasIndex | null = null;
+    let cancelled = false;
+    try {
+      fresh = parseAtlasIndex(
+        await withDeadline(this.active, ATLAS_INDEX_TIMEOUT_MS, (signal) => atlasEnv.fetchIndex(signal, "reload")),
+      );
+    } catch (err) {
+      cancelled = err instanceof AtlasCancelled;
+    }
+    this.recovering = false;
+    if (cancelled || this.disposed) return;
+    if (fresh === null) {
+      atlasEnv.recovery.failures += 1;
+      this.onChange();
+      return;
+    }
+    atlasEnv.recovery.succeeded = true;
+    this.index = fresh;
+    this.generation += 1;
+    for (const mode of this.wanted) this.images.delete(mode);
+    this.pump();
+    this.onChange();
   }
 
   imageUrl(mode: PreviewMode): string {

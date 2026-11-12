@@ -63,7 +63,7 @@ async def test_admin_uninstalls_and_reloads(hass, hacs, repo, hass_ws_client):
     client = await hass_ws_client(hass)
     msg = await _call(client)
     assert msg["success"] is True
-    assert msg["result"] == {"uninstalled": True}
+    assert msg["result"] == {"uninstalled": True, "reset_selected": False}
     assert repo.removals == 1
     assert len(calls) == 1
     assert hacs.writes == 1
@@ -272,9 +272,6 @@ class TestInUse:
         await store(hass).async_set_original("u1", {"theme": "Aurora Night"})
         await self.refuse(hass, repo, await hass_ws_client(hass))
 
-    async def test_callers_selected_theme(self, hass, hacs, repo, hass_ws_client):
-        await self.refuse(hass, repo, await hass_ws_client(hass), selected_theme="aurora day")
-
     async def test_system_default_theme(self, hass, hacs, repo, hass_ws_client):
         hass.data["frontend_default_theme"] = "Aurora Night"
         await self.refuse(hass, repo, await hass_ws_client(hass))
@@ -282,11 +279,21 @@ class TestInUse:
         hass.data["frontend_default_dark_theme"] = "Aurora Day"
         await self.refuse(hass, repo, await hass_ws_client(hass), msg_id=3)
 
+    async def test_the_callers_selected_theme_does_not_block_and_is_reported(self, hass, hacs, repo, hass_ws_client):
+        async_mock_service(hass, "frontend", "reload_themes")
+        client = await hass_ws_client(hass)
+        msg = await _call(client, selected_theme="aurora day")
+        assert msg["success"] is True
+        assert msg["result"] == {"uninstalled": True, "reset_selected": True}
+        assert repo.removals == 1
+
     async def test_unrelated_references_do_not_block(self, hass, hacs, repo, hass_ws_client):
         async_mock_service(hass, "frontend", "reload_themes")
         await store(hass).async_set_birthday("u1", {"month": 1, "day": 1, "theme": "Sunset"})
         client = await hass_ws_client(hass)
-        assert (await _call(client, selected_theme="Sunset"))["success"] is True
+        msg = await _call(client, selected_theme="Sunset")
+        assert msg["success"] is True
+        assert msg["result"] == {"uninstalled": True, "reset_selected": False}
 
 
 async def test_unreadable_names_fail_closed(hass, hacs, repo, hass_ws_client, tmp_path):

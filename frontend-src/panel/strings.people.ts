@@ -27,6 +27,8 @@ export const stringsPeople = {
   assignTitle: (name: string) => `Assign a theme to ${name}`,
   theme: "Theme",
   defaultTheme: "default",
+  defaultThemeLabel: "Home Assistant",
+  themeHint: "Only installed themes are listed. Install more from the Gallery.",
   mode: "Mode",
   modeAuto: "Auto",
   modeDark: "Dark",

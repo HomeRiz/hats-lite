@@ -5,6 +5,7 @@ import time
 from collections import OrderedDict, deque
 
 from .const import DOMAIN
+from .package_manager import HACS, MARKETPLACE, find_backend
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ DOWNLOAD_TIMEOUT = 300
 
 NOT_LOADED = "not_loaded"
 HACS_UNAVAILABLE = "hacs_unavailable"
+WARNING_NOT_ACCEPTED = "marketplace_warning"
 INVALID_REPOSITORY = "invalid_repository"
 INSTALL_IN_PROGRESS = "install_in_progress"
 INSTALL_FAILED = "install_failed"
@@ -30,17 +32,18 @@ OPERATION_TIMEOUT = "operation_timeout"
 
 MESSAGES = {
     NOT_LOADED: "HATS Lite is not loaded",
-    HACS_UNAVAILABLE: "HACS is not available",
+    HACS_UNAVAILABLE: "The Marketplace or HACS is not available",
+    WARNING_NOT_ACCEPTED: "Open the Marketplace once and accept its warning, then try again",
     INVALID_REPOSITORY: "This repository cannot be installed from here",
     INSTALL_IN_PROGRESS: "This theme is already being installed",
-    INSTALL_FAILED: "HACS could not download this theme",
+    INSTALL_FAILED: "This theme could not be downloaded",
     RELOAD_FAILED: "The theme was downloaded but themes could not be reloaded",
     RATE_LIMITED: "Too many installs, try again in a few minutes",
     NOT_INSTALLED: "This theme is not installed",
     THEME_IN_USE: "This theme is still in use",
     NAMES_UNKNOWN: "The theme names could not be verified",
-    UNINSTALL_FAILED: "HACS could not remove this theme",
-    OPERATION_TIMEOUT: "HACS is still working on this theme",
+    UNINSTALL_FAILED: "This theme could not be removed",
+    OPERATION_TIMEOUT: "Home Assistant is still working on this theme",
 }
 
 
@@ -80,7 +83,7 @@ INSTALL_LIMIT = InstallLimit()
 
 
 def find_entry(entries, source, full_name, hacs_id):
-    if source != "hacs":
+    if source not in (HACS, MARKETPLACE):
         raise InstallError(HACS_UNAVAILABLE)
     for entry in entries:
         if entry["full_name"] == full_name and entry["hacs_id"] == hacs_id:
@@ -131,7 +134,7 @@ async def resync(hass, hacs, data, strict):
     try:
         await hacs.data.async_write()
     except Exception as err:
-        _LOGGER.debug("HACS state write failed (%s)", type(err).__name__)
+        _LOGGER.debug("Package manager state write failed (%s)", type(err).__name__)
     data.pop("catalog_cache", None)
     data.pop("catalog_failure", None)
     try:
@@ -166,25 +169,9 @@ async def run_operation(hass, hacs, data, hold, job, failure_code):
             hold.keep = True
             hass.async_create_task(_finish_late(hass, hacs, data, hold, task))
             raise InstallError(OPERATION_TIMEOUT) from None
-        _LOGGER.warning("HACS operation failed (%s)", type(err).__name__)
+        _LOGGER.warning("Package manager operation failed (%s)", type(err).__name__)
         await resync(hass, hacs, data, strict=False)
         raise InstallError(failure_code) from None
-
-
-async def _follow_up(hacs):
-    async def recreate():
-        await hacs.async_recreate_entities()
-
-    async def reload_event():
-        from custom_components.hacs.enums import HacsDispatchEvent
-
-        hacs.async_dispatch(HacsDispatchEvent.RELOAD, {"force": True})
-
-    for step in (reload_event, recreate):
-        try:
-            await step()
-        except Exception as err:
-            _LOGGER.debug("HACS follow-up step failed (%s)", type(err).__name__)
 
 
 async def load_entry(hass, load_catalog, hacs, full_name, hacs_id):
@@ -200,18 +187,26 @@ async def async_install_theme(hass, load_catalog, user_id, full_name, hacs_id):
     data = hass.data.get(DOMAIN)
     if data is None:
         raise InstallError(NOT_LOADED)
-    hacs = hass.data.get("hacs")
-    if hacs is None:
+    backend = find_backend(hass)
+    if backend is None:
         raise InstallError(HACS_UNAVAILABLE)
+    hacs = backend.manager
     hold = acquire(data)
     try:
         repo = await load_entry(hass, load_catalog, hacs, full_name, hacs_id)
         was_installed = bool(getattr(repo.data, "installed", False))
         if not was_installed:
+            if not backend.may_install(user_id):
+                raise InstallError(WARNING_NOT_ACCEPTED)
             if not INSTALL_LIMIT.allow(user_id):
                 raise InstallError(RATE_LIMITED)
-            await run_operation(hass, hacs, data, hold, repo.async_download_repository(), INSTALL_FAILED)
-            await _follow_up(hacs)
+            try:
+                job = backend.install_job(repo)
+            except Exception as err:
+                _LOGGER.warning("Package manager install could not start (%s)", type(err).__name__)
+                raise InstallError(INSTALL_FAILED) from None
+            await run_operation(hass, hacs, data, hold, job, INSTALL_FAILED)
+            await backend.after_install(hass, repo)
         await resync(hass, hacs, data, strict=True)
     finally:
         if not hold.keep:

@@ -38,7 +38,8 @@ async function mountBrowse(hass: TestHass) {
 }
 
 const atlasDivs = (el: HTMLElement) => el.shadowRoot!.querySelectorAll(".atlas-thumb");
-const liveThumbs = (el: HTMLElement) => el.shadowRoot!.querySelectorAll("hats-lite-thumb");
+const liveThumbs = (el: HTMLElement) =>
+  Array.from(el.shadowRoot!.querySelectorAll<HTMLElement>("hats-lite-thumb")).filter((t) => t.closest("article")?.dataset.key !== "default");
 
 describe("atlas index parsing", () => {
   it("skips only the bad entries", () => {

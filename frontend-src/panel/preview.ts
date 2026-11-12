@@ -357,7 +357,7 @@ export class HatsLitePreview extends LitElement {
                 frame: this.frame,
                 density: this.density,
                 mode: this.effectiveMode(),
-                compare: this.comparing(),
+                compare: this.comparing() || !this.candidate,
                 canCompare: !!this.candidate,
                 hide: this.hideControls,
                 menu: this.menu,

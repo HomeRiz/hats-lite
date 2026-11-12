@@ -6,6 +6,7 @@ from homeassistant.components.frontend import DATA_DEFAULT_DARK_THEME, DATA_DEFA
 
 from . import install
 from .const import DOMAIN
+from .package_manager import find_backend
 from .theme_save import _defined_names, _yaml_paths
 
 _LOGGER = logging.getLogger(__name__)
@@ -63,7 +64,7 @@ def theme_names(yaml_path, folder):
     return names
 
 
-def _guard(hass, data, names, selected):
+def _guard(hass, data, names):
     if not names:
         raise install.InstallError(install.NAMES_UNKNOWN)
     wanted = {name.casefold() for name in names}
@@ -72,8 +73,6 @@ def _guard(hass, data, names, selected):
         value = hass.data.get(key)
         if isinstance(value, str):
             used.add(value.casefold())
-    if selected:
-        used.add(selected.casefold())
     if wanted & used:
         raise install.InstallError(install.THEME_IN_USE)
     return wanted
@@ -83,9 +82,10 @@ async def async_uninstall_theme(hass, load_catalog, user_id, full_name, hacs_id,
     data = hass.data.get(DOMAIN)
     if data is None:
         raise install.InstallError(install.NOT_LOADED)
-    hacs = hass.data.get("hacs")
-    if hacs is None:
+    backend = find_backend(hass)
+    if backend is None:
         raise install.InstallError(install.HACS_UNAVAILABLE)
+    hacs = backend.manager
     hold = install.acquire(data)
     try:
         repo = await install.load_entry(hass, load_catalog, hacs, full_name, hacs_id)
@@ -93,7 +93,8 @@ async def async_uninstall_theme(hass, load_catalog, user_id, full_name, hacs_id,
         if not getattr(repo.data, "installed", False):
             raise install.InstallError(install.NOT_INSTALLED)
         names = await hass.async_add_executor_job(theme_names, yaml_path, folder)
-        wanted = _guard(hass, data, names or [], selected)
+        wanted = _guard(hass, data, names or [])
+        reset_selected = isinstance(selected, str) and selected.casefold() in wanted
         if not UNINSTALL_LIMIT.allow(user_id):
             raise install.InstallError(install.RATE_LIMITED)
         hold.names = wanted
@@ -105,4 +106,4 @@ async def async_uninstall_theme(hass, load_catalog, user_id, full_name, hacs_id,
     finally:
         if not hold.keep:
             install.release(data, hold)
-    return {"uninstalled": True}
+    return {"uninstalled": True, "reset_selected": reset_selected}

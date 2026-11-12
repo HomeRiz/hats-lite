@@ -23,7 +23,7 @@ from .const import DOMAIN, UPLOAD_DIR_NAME
 from .outcome_api import ws_outcome_ack
 from .removal import THEME_UNAVAILABLE, UNAVAILABLE_TEXT, is_removing
 from .selection import MAX_NAME, valid_selection
-from .sources import hacs_loader, public_loader
+from .sources import manager_loader, public_loader
 from .theme_api import ws_theme
 from .theme_save import (
     check_backgrounds,
@@ -61,7 +61,7 @@ def _stale_catalog(data):
 
 async def _fill_catalog(hass, data):
     try:
-        result = await load_catalog(lambda: hacs_loader(hass), lambda: public_loader(hass))
+        result = await load_catalog(lambda: manager_loader(hass), lambda: public_loader(hass))
     except Exception as err:
         data["catalog_failure"] = _now() + CATALOG_FAILURE_TTL
         stale = _stale_catalog(data)
@@ -77,7 +77,7 @@ async def _fill_catalog(hass, data):
 async def load_catalog_for_hass(hass):
     data = hass.data.get(DOMAIN)
     if data is None:
-        return await load_catalog(lambda: hacs_loader(hass), lambda: public_loader(hass))
+        return await load_catalog(lambda: manager_loader(hass), lambda: public_loader(hass))
     cached = data.get("catalog_cache")
     if cached is not None and _now() < cached[0]:
         return cached[1]

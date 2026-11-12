@@ -5,6 +5,7 @@ import type { HatsLiteModsPreview } from "./modsPreview";
 import { resetModsConsent } from "./modsPreview";
 import type { PanelHass } from "./contract";
 import { stringsMods as s } from "./strings.mods";
+import { withStore } from "./store";
 
 type Call = { type: string; [key: string]: unknown };
 
@@ -68,6 +69,20 @@ afterEach(() => {
   el.remove();
 });
 
+describe("hats-lite-mods store wording through the real hass", () => {
+  it("links to the Marketplace when the Marketplace is loaded", async () => {
+    el.remove();
+    el = document.createElement("hats-lite-mods") as HatsLiteMods;
+    el.hass = { ...makeHass(), config: { components: ["marketplace"] } } as PanelHass;
+    document.body.append(el);
+    await settle();
+    await pick("o/grid");
+    const link = pv<HTMLAnchorElement>("#store-link")!;
+    expect(link.textContent).toBe("Open in Marketplace");
+    expect(link.getAttribute("href")).toBe("/marketplace/repository?owner=o&repository=grid&category=plugin");
+  });
+});
+
 describe("hats-lite-mods kinds", () => {
   it("offers an accessible kind group with only the kinds present plus all", () => {
     const group = el.shadowRoot!.querySelector('[data-group="kind"]')!;
@@ -99,13 +114,13 @@ describe("hats-lite-mods kinds", () => {
     expect(el.shadowRoot!.querySelector('[data-name="o/styler"]')!.textContent).toContain(s.stars(20));
   });
 
-  it("treats an installed integration as install-via-HACS only", async () => {
+  it("treats an installed integration as install-via-store only", async () => {
     await pick("o/uix");
-    expect(pv("#integration-note")?.textContent).toBe(s.integrationNote);
+    expect(pv("#integration-note")?.textContent).toBe(withStore(s.integrationNote, "generic"));
     expect(pv("#show-card")).toBeNull();
     expect(pv("#run")).toBeNull();
     expect(pv("#installed-note")).toBeNull();
-    const hacs = pv<HTMLAnchorElement>("#hacs-link")!;
+    const hacs = pv<HTMLAnchorElement>("#store-link")!;
     expect(hacs.href).toContain("category=integration");
     expect(hacs.getAttribute("rel")).toBe("noopener noreferrer");
   });

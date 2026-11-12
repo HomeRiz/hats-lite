@@ -74,10 +74,13 @@ async def load_catalog(hacs_loader, public_loader):
         records = await hacs_loader()
     except Exception:
         records = None
+    kind = "hacs"
+    if isinstance(records, tuple) and len(records) == 2:
+        records, kind = records
     if isinstance(records, list):
         entries = normalize_hacs_entries(records)
         if entries:
-            return entries, "hacs"
+            return entries, kind
     try:
         data = await public_loader()
     except Exception as err:

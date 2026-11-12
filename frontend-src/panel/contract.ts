@@ -20,6 +20,7 @@ export type PanelHass = Hass & {
   };
   selectedTheme?: { theme?: string; dark?: boolean; primaryColor?: string; accentColor?: string } | null;
   user?: { is_admin?: boolean; id?: string; name?: string };
+  config?: { components?: string[] };
   states?: Record<string, unknown>;
   callWS?: (msg: Record<string, unknown>) => Promise<unknown>;
   fetchWithAuth?: (path: string, init?: RequestInit) => Promise<Response>;

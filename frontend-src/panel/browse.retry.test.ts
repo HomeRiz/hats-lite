@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { catalog, installObserver, makeHass, themeCalls, type FakeObserver } from "./browseTestKit";
+import { catalog, installObserver, makeHass, themeCalls, type FakeObserver, catalogQuery } from "./browseTestKit";
 import "./browse";
 import type { HatsLiteBrowse } from "./browse";
 
@@ -34,7 +34,7 @@ async function mountFailing(error: unknown) {
 }
 
 function thumbText(el: HatsLiteBrowse): string {
-  return el.shadowRoot!.querySelector("hats-lite-thumb")!.shadowRoot!.textContent ?? "";
+  return catalogQuery(el.shadowRoot!, "hats-lite-thumb")!.shadowRoot!.textContent ?? "";
 }
 
 describe("browse error classes", () => {

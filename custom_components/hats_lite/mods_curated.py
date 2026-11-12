@@ -16,6 +16,8 @@ INTEGRATION = "integration"
 CATEGORIES = frozenset({PLUGIN, INTEGRATION})
 KINDS = frozenset({"styling", "cards", "layout", "templating", "chrome"})
 HACSFILES = "hacsfiles"
+COMMUNITY_ROOT = "local"
+COMMUNITY_DIR = "community"
 RESERVED = frozenset({HACSFILES, "local", "api", "auth", "static", "frontend_latest"})
 FULL_NAME = re.compile(r"[A-Za-z0-9._-]{1,39}/[A-Za-z0-9._-]{1,100}\Z")
 SEGMENT = re.compile(r"[a-z0-9][a-z0-9._-]{0,99}\Z")
@@ -113,6 +115,9 @@ def resource_keys(items):
         if head == HACSFILES:
             if len(segments) >= 4 and SEGMENT.match(segments[2].lower()):
                 keys.add(f"{HACSFILES}/{segments[2].lower()}")
+        elif head == COMMUNITY_ROOT and segments[2] == COMMUNITY_DIR:
+            if len(segments) >= 5 and SEGMENT.match(segments[3].lower()):
+                keys.add(f"{HACSFILES}/{segments[3].lower()}")
         elif head.lower() != HACSFILES and SEGMENT.match(head.lower()):
             keys.add(head.lower())
     return keys

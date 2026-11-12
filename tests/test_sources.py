@@ -145,7 +145,7 @@ async def test_load_catalog_for_hass_prefers_hacs(hass):
 
 async def test_catalog_is_cached_for_five_minutes(hass, setup, clock):
     hacs = AsyncMock(return_value=[{"full_name": "a/b", "category": "theme"}])
-    with patch.object(api, "hacs_loader", hacs):
+    with patch.object(api, "manager_loader", hacs):
         first = await api.load_catalog_for_hass(hass)
         clock["t"] = 1299.0
         assert await api.load_catalog_for_hass(hass) == first
@@ -158,7 +158,7 @@ async def test_catalog_is_cached_for_five_minutes(hass, setup, clock):
 async def test_catalog_errors_are_cached_briefly(hass, setup, clock):
     hacs = AsyncMock(return_value=None)
     public = AsyncMock(side_effect=RuntimeError("down"))
-    with patch.object(api, "hacs_loader", hacs), patch.object(api, "public_loader", public):
+    with patch.object(api, "manager_loader", hacs), patch.object(api, "public_loader", public):
         for _ in range(2):
             with pytest.raises(CatalogError):
                 await api.load_catalog_for_hass(hass)

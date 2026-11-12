@@ -1,5 +1,53 @@
 import { html, nothing, type TemplateResult } from "lit";
+import { styleMap } from "lit/directives/style-map.js";
+import type { PanelHass } from "./contract";
+import { type RouteTab } from "./route";
+import { inUse } from "./shellTheme";
 import { strings } from "./strings";
+
+export const tabDomId = (id: RouteTab): string => `tab-${id}`;
+export const panelDomId = (id: RouteTab): string => `panel-${id}`;
+
+export function renderTabNav(
+  tabs: readonly RouteTab[],
+  current: RouteTab,
+  onSelect: (id: RouteTab) => void,
+  onKey: (event: KeyboardEvent) => void,
+): TemplateResult {
+  return html`
+    <nav class="tabs seg" role="tablist" aria-label=${strings.shell.tabList} @keydown=${onKey}>
+      ${tabs.map((id) => {
+        const selected = current === id;
+        return html`
+          <button
+            type="button"
+            role="tab"
+            id=${tabDomId(id)}
+            aria-controls=${panelDomId(id)}
+            aria-selected=${selected ? "true" : "false"}
+            tabindex=${selected ? "0" : "-1"}
+            @click=${() => onSelect(id)}
+          >
+            ${strings.shell.tabs[id]}
+          </button>
+        `;
+      })}
+    </nav>
+  `;
+}
+
+export function renderInUse(hass: PanelHass | undefined): TemplateResult {
+  const current = inUse(hass);
+  const dot = (color: string) =>
+    color ? html`<i style=${styleMap({ background: color })}></i>` : html`<i class="neutral"></i>`;
+  return html`
+    <span class="chip in-use">
+      <span class="label">${strings.shell.inUse}</span>
+      <span class="name">${current.name}</span>
+      <span class="swatches" aria-hidden="true">${dot(current.primary)}${dot(current.accent)}</span>
+    </span>
+  `;
+}
 
 export const MENU_ICON = html`<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
   <path d="M3 6h18M3 12h18M3 18h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
@@ -42,4 +90,8 @@ export function renderFileThemes(
       ${fileStatus(status)}
     </label>
   `;
+}
+
+export function renderNotice(text: string): TemplateResult {
+  return html`<p class="notice" role="status">${text}</p>`;
 }

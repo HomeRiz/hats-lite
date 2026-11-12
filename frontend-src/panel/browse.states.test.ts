@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { CATALOG_CACHE_KEY } from "./contract";
-import { bundle, cards, catalog, makeHass, mount, settle, text, thumbs } from "./browseTestKit";
+import { bundle, cards, catalog, makeHass, mount, settle, text, thumbs, catalogQuery } from "./browseTestKit";
 import type { HatsLiteBrowse } from "./browse";
 import { stringsBrowse } from "./strings.browse";
 
@@ -42,13 +42,13 @@ describe("empty and error states", () => {
     const el = await mount(hass);
     expect(text(el)).toContain(stringsBrowse.loadError);
     expect(text(el)).not.toContain(stringsBrowse.noThemes);
-    const retry = el.shadowRoot!.querySelector<HTMLButtonElement>("button.retry")!;
+    const retry = catalogQuery<HTMLButtonElement>(el.shadowRoot!, "button.retry")!;
     expect(retry.textContent?.trim()).toBe(stringsBrowse.retry);
     fail = false;
     retry.click();
     await settle(el);
     expect(cards(el)).toHaveLength(2);
-    expect(el.shadowRoot!.querySelector("button.retry")).toBeNull();
+    expect(catalogQuery(el.shadowRoot!, "button.retry")).toBeNull();
   });
 
   it("does not offer a retry when a cached list is shown", async () => {
@@ -56,7 +56,7 @@ describe("empty and error states", () => {
     const hass = makeHass();
     hass.connection.sendMessagePromise.mockRejectedValue(new Error("offline"));
     const el = await mount(hass);
-    expect(el.shadowRoot!.querySelector("button.retry")).toBeNull();
+    expect(catalogQuery(el.shadowRoot!, "button.retry")).toBeNull();
   });
 });
 
@@ -81,9 +81,9 @@ describe("accessibility", () => {
     );
     const el = await mount(hass);
     for (const thumb of thumbs(el)) {
-      const skeleton = thumb.shadowRoot!.querySelector(".skeleton")!;
+      const skeleton = catalogQuery(thumb.shadowRoot!, ".skeleton")!;
       expect(skeleton.getAttribute("aria-hidden")).toBe("true");
-      expect(thumb.shadowRoot!.querySelector('[role="status"]')).toBeNull();
+      expect(catalogQuery(thumb.shadowRoot!, '[role="status"]')).toBeNull();
     }
     const live = el.shadowRoot!.querySelectorAll('[aria-live="polite"]');
     expect(live).toHaveLength(1);
@@ -95,7 +95,7 @@ describe("accessibility", () => {
 describe("thumbnail button", () => {
   it("does not take focus from a mouse press", async () => {
     const el = await mount(makeHass());
-    const button = el.shadowRoot!.querySelector<HTMLButtonElement>(".thumb-btn")!;
+    const button = catalogQuery<HTMLButtonElement>(el.shadowRoot!, ".thumb-btn")!;
     const press = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
     button.dispatchEvent(press);
     expect(press.defaultPrevented).toBe(true);

@@ -4,6 +4,7 @@ import { errorCode, fetchMods, filterMods, MOD_KINDS, type KindFilter, type ModE
 import "./modsDialog";
 import { renderModLinks } from "./modsPreview";
 import { modsStyles } from "./modsStyles";
+import { fullNameOfItem, type RouteItem } from "./route";
 import { modsErrorMessage, stringsMods as s } from "./strings.mods";
 
 const FILTERS: readonly [ModFilter, string][] = [
@@ -23,6 +24,7 @@ export class HatsLiteMods extends LitElement {
     filter: { state: true },
     kind: { state: true },
     selected: { state: true },
+    deepLink: { attribute: false },
   };
   static styles = modsStyles;
 
@@ -36,9 +38,33 @@ export class HatsLiteMods extends LitElement {
   filter: ModFilter = "all";
   kind: KindFilter = "all";
   selected = "";
+  deepLink: RouteItem | null = null;
 
   protected willUpdate(changed: PropertyValues): void {
     if (changed.has("hass") && this.hass && this.status === "idle") void this.load();
+    if ((changed.has("deepLink") || changed.has("status")) && this.status === "ready") this.syncDeepLink();
+  }
+
+  private syncDeepLink(): void {
+    const link = this.deepLink;
+    if (link === null) {
+      this.selected = "";
+      return;
+    }
+    const name = fullNameOfItem(link).toLowerCase();
+    const mod = this.mods.find((m) => m.full_name.toLowerCase() === name && m.category === link.category);
+    if (mod) this.selected = mod.full_name;
+  }
+
+  private openMod(mod: ModEntry): void {
+    this.selected = mod.full_name;
+    this.dispatchEvent(
+      new CustomEvent("hats-lite-mod-opened", {
+        bubbles: true,
+        composed: true,
+        detail: { fullName: mod.full_name, category: mod.category },
+      }),
+    );
   }
 
   private async load(): Promise<void> {
@@ -63,6 +89,7 @@ export class HatsLiteMods extends LitElement {
       const items = Array.from(this.renderRoot.querySelectorAll<HTMLElement>("[data-name]"));
       items.find((li) => li.dataset.name === name)?.querySelector<HTMLElement>(".pick")?.focus();
     });
+    this.dispatchEvent(new CustomEvent("hats-lite-mod-closed", { bubbles: true, composed: true }));
   };
 
   private renderItem(mod: ModEntry) {
@@ -74,9 +101,7 @@ export class HatsLiteMods extends LitElement {
             type="button"
             aria-haspopup="dialog"
             aria-label=${s.select(mod.full_name)}
-            @click=${() => {
-              this.selected = mod.full_name;
-            }}
+            @click=${() => this.openMod(mod)}
           >
             ${mod.full_name}
           </button>
@@ -87,7 +112,7 @@ export class HatsLiteMods extends LitElement {
           ${mod.stars > 0 ? html`<span class="chip">${s.stars(mod.stars)}</span>` : nothing}
         </div>
         ${mod.description ? html`<p class="desc">${mod.description}</p>` : nothing}
-        <p class="links">${renderModLinks(mod, false)}</p>
+        <p class="links">${renderModLinks(mod, null)}</p>
       </li>
     `;
   }

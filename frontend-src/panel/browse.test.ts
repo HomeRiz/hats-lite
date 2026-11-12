@@ -11,8 +11,7 @@ import {
   previewButtons,
   settle,
   text,
-  themeCalls,
-} from "./browseTestKit";
+  themeCalls, catalogQuery } from "./browseTestKit";
 
 beforeEach(() => {
   localStorage.clear();
@@ -32,7 +31,7 @@ describe("hats-lite-browse", () => {
 
   it("filters cards live by name and description", async () => {
     const el = await mount(makeHass());
-    const input = el.shadowRoot!.querySelector<HTMLInputElement>("input[type=search]")!;
+    const input = catalogQuery<HTMLInputElement>(el.shadowRoot!, "input[type=search]")!;
     expect(input.getAttribute("aria-label")).toBe(stringsBrowse.searchLabel);
 
     input.value = "MONO";
@@ -89,7 +88,7 @@ describe("hats-lite-browse", () => {
     const listener = vi.fn();
     el.addEventListener(EVENT_THEME_SELECTED, listener);
 
-    el.shadowRoot!.querySelector<HTMLButtonElement>(".thumb-btn")!.click();
+    catalogQuery<HTMLButtonElement>(el.shadowRoot!, ".thumb-btn")!.click();
     await settle(el);
     expect(listener).toHaveBeenCalledTimes(1);
   });
@@ -125,11 +124,11 @@ describe("hats-lite-browse", () => {
 
     previewButtons(el)[1].click();
     await settle(el);
-    expect(el.shadowRoot!.querySelector(".card-error")?.textContent).toBe("Repository not found");
+    expect(catalogQuery(el.shadowRoot!, ".card-error")?.textContent).toBe("Repository not found");
 
     previewButtons(el)[0].click();
     await settle(el);
-    expect(el.shadowRoot!.querySelector(".card-error")?.textContent).toBe(
+    expect(catalogQuery(el.shadowRoot!, ".card-error")?.textContent).toBe(
       stringsBrowse.themeErrorDefault,
     );
     expect(listener).not.toHaveBeenCalled();

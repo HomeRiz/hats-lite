@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CatalogEntry } from "./contract";
 import { THEME_CACHE_KEY } from "./browseCache";
-import { bundle, catalog, makeHass, mount, names, settle, thumbs, themeCalls } from "./browseTestKit";
+import { bundle, catalog, makeHass, mount, names, settle, thumbs, themeCalls, catalogQuery } from "./browseTestKit";
 
 beforeEach(() => {
   localStorage.clear();
@@ -38,7 +38,7 @@ describe("browse thumbnails", () => {
     const thumb = thumbs(el)[0];
     expect(thumb.style.getPropertyValue("--primary-background-color")).toBe("#000");
 
-    el.shadowRoot!.querySelector<HTMLButtonElement>('[data-filter="light"]')!.click();
+    catalogQuery<HTMLButtonElement>(el.shadowRoot!, '[data-filter="light"]')!.click();
     await settle(el);
     expect(thumb.style.getPropertyValue("--primary-background-color")).toBe("#fff");
     expect(thumb.style.getPropertyValue("--card-background-color")).toBe("#ffffff");
@@ -78,9 +78,9 @@ describe("browse thumbnails", () => {
       expect(themeCalls(hass)).toHaveLength(2);
       await vi.advanceTimersByTimeAsync(50);
       await el.updateComplete;
-      const thumb = el.shadowRoot!.querySelector("hats-lite-thumb")!;
+      const thumb = catalogQuery(el.shadowRoot!, "hats-lite-thumb")!;
       expect(thumb.shadowRoot!.textContent).toContain("Preview not available");
-      expect(el.shadowRoot!.querySelector("button.btn.primary")).not.toBeNull();
+      expect(catalogQuery(el.shadowRoot!, "button.btn.primary")).not.toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -133,7 +133,7 @@ describe("browse thumbnails", () => {
     const listener = vi.fn();
     el.addEventListener("hats-lite-theme-selected", listener);
 
-    el.shadowRoot!.querySelector<HTMLButtonElement>("button.btn.primary")!.click();
+    catalogQuery<HTMLButtonElement>(el.shadowRoot!, "button.btn.primary")!.click();
     await settle(el);
     expect(themeCalls(hass)).toHaveLength(1);
     expect(listener).toHaveBeenCalledTimes(1);
@@ -162,7 +162,7 @@ describe("browse filters and in-use", () => {
     );
     const el = await mount(hass);
     const press = async (id: string) => {
-      el.shadowRoot!.querySelector<HTMLButtonElement>(`[data-filter="${id}"]`)!.click();
+      catalogQuery<HTMLButtonElement>(el.shadowRoot!, `[data-filter="${id}"]`)!.click();
       await settle(el);
     };
 
@@ -185,8 +185,8 @@ describe("browse filters and in-use", () => {
       },
     });
     const el = await mount(hass);
-    expect(el.shadowRoot!.querySelector(".inuse")).toBeNull();
-    const first = el.shadowRoot!.querySelectorAll("article.card")[0];
+    expect(catalogQuery(el.shadowRoot!, ".inuse")).toBeNull();
+    const first = el.shadowRoot!.querySelectorAll("article.card:not([data-key=\"default\"])")[0];
     expect(first.textContent).toContain("In use");
   });
 });
@@ -209,7 +209,7 @@ describe("lazy loading after the list changes", () => {
       const el = await mount(hass);
       const first = observed.length;
       expect(first).toBeGreaterThan(0);
-      const input = el.shadowRoot!.querySelector<HTMLInputElement>("input[type=search]")!;
+      const input = catalogQuery<HTMLInputElement>(el.shadowRoot!, "input[type=search]")!;
       input.value = "theme-6";
       input.dispatchEvent(new Event("input"));
       await settle(el);

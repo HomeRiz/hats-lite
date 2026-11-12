@@ -14,6 +14,7 @@ from .mods_curated import (
     detect_installed,
     resource_keys,
 )
+from .package_manager import find_backend
 from .sources import CHUNK_SIZE, MAX_CATALOG_BYTES
 from .theme_errors import (
     CATALOG_UNAVAILABLE,
@@ -33,7 +34,6 @@ MAX_RECORDS = 20000
 MAX_DESCRIPTION = 300
 MAX_STARS = 10**9
 CACHE_KEY = "hats_lite_mods"
-HACS_KEY = "hacs"
 LOVELACE_KEY = "lovelace"
 FULL_NAME = re.compile(r"[A-Za-z0-9._-]{1,39}/[A-Za-z0-9._-]{1,100}\Z")
 COMMIT = re.compile(r"[0-9a-fA-F]{4,40}\Z")
@@ -156,15 +156,12 @@ async def _resource_items(hass):
 
 async def read_hacs(hass):
     try:
-        hacs = hass.data.get(HACS_KEY)
-        repositories = getattr(hacs, "repositories", None)
-        items = getattr(repositories, "list_all", None)
-        if callable(items):
-            items = items()
+        backend = find_backend(hass)
+        items = None if backend is None else backend.items()
         if items is None:
             return None
         out = []
-        for repo in list(items):
+        for repo in items:
             data = getattr(repo, "data", None)
             if data is None or str(getattr(data, "category", None)) not in CATEGORIES:
                 continue
@@ -307,12 +304,12 @@ async def load_mods(hass, admit=None, curated=None):
     public = await _public_index(hass, admit, missing)
     source = "curated"
     if metas:
-        source = "hacs"
+        source = getattr(find_backend(hass), "kind", "hacs")
     for entry in missing:
         found = public.get(entry["full_name"].lower())
         if found is not None:
             metas[(entry["full_name"].lower(), PLUGIN)] = found
-            source = source if source == "hacs" else "public"
+            source = source if source in ("hacs", "marketplace") else "public"
     keys = resource_keys(await _resource_items(hass))
     ambiguous = ambiguous_keys(curated)
     out = []

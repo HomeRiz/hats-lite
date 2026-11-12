@@ -21,6 +21,8 @@ import { renderToolbar } from "./browseToolbar";
 import { entryKey, modeForFilter, passesFilter, type FilterId } from "./browseFilters";
 import { AtlasStore, type AtlasTheme } from "./browseAtlas";
 import { renderCard, type CardModel } from "./browseCard";
+import { DEFAULT_ENTRY, defaultBundle, defaultShown, isDefaultEntry, renderDefaultCard } from "./browseDefault";
+import { emptyMessage } from "./browseEmpty";
 import { KnownNames, installedKind, isInUse, isInstalledRepo, sameList } from "./browseNames";
 import { BundleCache, openBundle } from "./browseBundles";
 import { LoadQueue, QueueCancelled } from "./browseQueue";
@@ -220,7 +222,7 @@ export class HatsLiteBrowse extends LitElement {
   }
 
   private watchCards(): void {
-    const cards = Array.from(this.renderRoot.querySelectorAll<HTMLElement>(".card[data-key]"));
+    const cards = Array.from(this.renderRoot.querySelectorAll<HTMLElement>('.card[data-key]:not([data-key="default"])'));
     if (typeof IntersectionObserver === "undefined") {
       for (const card of cards.slice(0, EAGER_LOADS)) {
         const entry = this.entryIndex.get(card.dataset.key ?? "");
@@ -253,6 +255,7 @@ export class HatsLiteBrowse extends LitElement {
   };
 
   async openEntry(entry: CatalogEntry): Promise<ThemeSelectedDetail> {
+    if (isDefaultEntry(entry)) return { entry, themes: defaultBundle() };
     const guess = this.atlas.theme(entry.full_name, entry.last_commit)?.name;
     const opened = await openBundle(this.hassRef, this.known, this.cache, this.bundles, entry, guess);
     return { entry, ...opened };
@@ -264,7 +267,8 @@ export class HatsLiteBrowse extends LitElement {
   }
 
   visibleEntries(): CatalogEntry[] {
-    return this.filtered(this.query.trim().toLowerCase()).map((row) => row.entry);
+    const q = this.query.trim().toLowerCase();
+    return [...(defaultShown(this.filter, q) ? [DEFAULT_ENTRY] : []), ...this.filtered(q).map((row) => row.entry)];
   }
 
   private async selectTheme(entry: CatalogEntry): Promise<void> {
@@ -340,21 +344,15 @@ export class HatsLiteBrowse extends LitElement {
   }
 
   private visibleCards(q: string) {
-    return this.filtered(q).map(({ entry, names, installed }) =>
-      renderCard(this.cardModel(entry, names, installed), () => this.selectTheme(entry)),
-    );
+    const head = defaultShown(this.filter, q) ? [renderDefaultCard(this.mode, () => this.selectTheme(DEFAULT_ENTRY))] : [];
+    return [...head, ...this.filtered(q).map(({ entry, names, installed }) => renderCard(this.cardModel(entry, names, installed), () => this.selectTheme(entry)))];
   }
 
-  private emptyText(count: number, q: string): string {
-    if (!this.loaded || this.loading || count > 0) return "";
-    if (this.entries.length > 0) return q ? stringsBrowse.noMatches : stringsBrowse.noFilterMatches;
-    return this.error ? "" : stringsBrowse.noThemes;
-  }
 
   protected render() {
     const q = this.query.trim().toLowerCase();
     const cards = this.visibleCards(q);
-    const emptyText = this.emptyText(cards.length, q);
+    const emptyText = emptyMessage({ count: this.filtered(q).length, ready: this.loaded && !this.loading, catalog: this.entries.length, error: this.error, query: q, defaultShown: defaultShown(this.filter, q) });
     const pending = [...this.states.values()].includes("loading");
     return html`
       <section>

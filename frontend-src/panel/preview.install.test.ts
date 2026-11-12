@@ -3,6 +3,7 @@ import type { PanelHass, PreviewCandidate } from "./contract";
 import "./preview";
 import type { HatsLitePreview } from "./preview";
 import { stringsPreview as s } from "./strings.preview";
+import { withStore } from "./store";
 import { INSTALL_MSG } from "./previewInstall";
 
 const notInstalled: PreviewCandidate = {
@@ -99,13 +100,13 @@ describe("not installed wording", () => {
 });
 
 describe("install for administrators", () => {
-  it("asks for confirmation before calling HACS", async () => {
+  it("asks for confirmation before calling the store", async () => {
     const { hass, installCalls } = makeHass(true, async () => ({ installed: true }));
     const el = await mount(hass);
     await click(el, ".install");
     const dialog = q(el, "[role='alertdialog']")!;
     expect(dialog.textContent).toContain("owner/ocean");
-    expect(dialog.textContent).toContain(s.installConfirmBody.replace("{repo}", "owner/ocean"));
+    expect(dialog.textContent).toContain(withStore(s.installConfirmBody, "generic").replace("{repo}", "owner/ocean"));
     expect(installCalls()).toHaveLength(0);
   });
 
@@ -153,7 +154,7 @@ describe("install for administrators", () => {
     expect(q(el, ".install")!.getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("explains a missing HACS and keeps the deep link", async () => {
+  it("explains a missing store and keeps the deep link", async () => {
     const { hass } = makeHass(true, async () => {
       throw { code: "hacs_unavailable", message: "token ghp_SECRET" };
     });
@@ -161,9 +162,9 @@ describe("install for administrators", () => {
     await click(el, ".install");
     await click(el, ".install-confirm");
     await vi.waitFor(() => expect(q(el, ".error")).not.toBeNull());
-    expect(q(el, ".error")!.textContent).toContain(s.installErrors.hacs_unavailable);
+    expect(q(el, ".error")!.textContent).toContain(withStore(s.installErrors.hacs_unavailable, "generic"));
     expect(text(el)).not.toContain("SECRET");
-    const link = q(el, "a.hacs-link") as HTMLAnchorElement;
+    const link = q(el, "a.store-link") as HTMLAnchorElement;
     expect(link.href).toBe("https://my.home-assistant.io/redirect/hacs_repository/?owner=owner&repository=ocean&category=theme");
     expect(link.rel).toContain("noopener");
     expect(q(el, ".install")).not.toBeNull();
@@ -178,7 +179,7 @@ describe("install for administrators", () => {
       await click(el, ".install");
       await click(el, ".install-confirm");
       await vi.waitFor(() => expect(q(el, ".error")).not.toBeNull());
-      expect(q(el, ".error")!.textContent).toContain(s.installErrors[code as keyof typeof s.installErrors]);
+      expect(q(el, ".error")!.textContent).toContain(withStore(s.installErrors[code as keyof typeof s.installErrors], "generic"));
       el.remove();
     }
     const { hass } = makeHass(true, async () => {
@@ -188,7 +189,7 @@ describe("install for administrators", () => {
     await click(el, ".install");
     await click(el, ".install-confirm");
     await vi.waitFor(() => expect(q(el, ".error")).not.toBeNull());
-    expect(q(el, ".error")!.textContent).toContain(s.installErrors.unknown);
+    expect(q(el, ".error")!.textContent).toContain(withStore(s.installErrors.unknown, "generic"));
     expect(text(el)).not.toContain("socket closed");
   });
 
@@ -204,7 +205,7 @@ describe("install for administrators", () => {
     await vi.waitFor(() => expect(done).toHaveBeenCalledTimes(1));
     expect(done.mock.calls[0][0].detail).toEqual({ fullName: "owner/ocean", partial: true });
     await el.updateComplete;
-    expect(q(el, ".error")!.textContent).toContain(s.installErrors.reload_failed);
+    expect(q(el, ".error")!.textContent).toContain(withStore(s.installErrors.reload_failed, "generic"));
   });
 
   it("can retry after a failure", async () => {
@@ -230,23 +231,23 @@ describe("install fallbacks", () => {
     const { hass, installCalls } = makeHass(false, async () => ({}));
     const el = await mount(hass);
     expect(q(el, ".install")).toBeNull();
-    expect(text(el)).toContain(s.adminOnly);
-    expect(q(el, "a.hacs-link")).not.toBeNull();
+    expect(text(el)).toContain(withStore(s.adminOnly, "generic"));
+    expect(q(el, "a.store-link")).not.toBeNull();
     expect(installCalls()).toHaveLength(0);
   });
 
-  it("without a HACS id keeps the link and a plain message", async () => {
+  it("without a store target keeps the link and a plain message", async () => {
     const { hass } = makeHass(true, async () => ({}));
     const el = await mount(hass, null);
     expect(q(el, ".install")).toBeNull();
-    expect(text(el)).toContain(s.installViaHacs);
-    expect(q(el, "a.hacs-link")).not.toBeNull();
-    expect(q(el, "a.link:not(.hacs-link)")!.getAttribute("href")).toBe("https://github.com/owner/ocean");
+    expect(text(el)).toContain(withStore(s.installViaStore, "generic"));
+    expect(q(el, "a.store-link")).not.toBeNull();
+    expect(q(el, "a.link:not(.store-link)")!.getAttribute("href")).toBe("https://github.com/owner/ocean");
   });
 
-  it("builds no HACS link from a non repository url", async () => {
+  it("builds no store link from a non repository url", async () => {
     const { hass } = makeHass(false, async () => ({}));
     const el = await mount(hass, null, { ...notInstalled, repoUrl: "https://example.com/a/b/c" });
-    expect(q(el, "a.hacs-link")).toBeNull();
+    expect(q(el, "a.store-link")).toBeNull();
   });
 });

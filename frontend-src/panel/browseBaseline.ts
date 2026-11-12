@@ -57,3 +57,17 @@ export const BASELINE: Record<PreviewMode, Record<string, string>> = {
   dark: build("dark"),
   light: build("light"),
 };
+
+const OPTIONAL_KEYS = [
+  "lovelace-background",
+  "ha-card-background",
+  "ha-card-border-radius",
+  "ha-card-border-width",
+  "ha-card-border-color",
+  "ha-card-box-shadow",
+  "ha-card-backdrop-filter",
+  "state-icon-color",
+  "primary-font-family",
+];
+
+export const THUMB_RESET: Record<string, string> = Object.fromEntries(OPTIONAL_KEYS.map((key) => [key, "initial"]));

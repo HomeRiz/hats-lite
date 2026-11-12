@@ -12,7 +12,7 @@ import {
 } from "./peopleData";
 import "./peopleDialogs";
 import type { DoneDetail } from "./peopleDialogs";
-import { allThemeNamesOf, themeNamesOf } from "./peopleThemes";
+import { allThemeNamesOf, themeLabel } from "./peopleThemes";
 import { rangeText, renderTimeline } from "./peopleHolidays";
 import "./peopleHolidays";
 import { peopleStyles } from "./peopleStyles";
@@ -97,7 +97,7 @@ export class HatsLitePeople extends LitElement {
   }
 
   private themeNames(): string[] {
-    return themeNamesOf(this.hass);
+    return allThemeNamesOf(this.hass);
   }
 
   private open(dialog: Dialog): void {
@@ -242,7 +242,7 @@ export class HatsLitePeople extends LitElement {
           ? html`<p class="muted">${s.holidaysEmpty}</p>`
           : html`<ul class="holidays">
               ${this.holidays.map(
-                (h) => html`<li>${s.holidayRowLabel(h.name, h.kind === "event" ? s.eventKind : s.holidayKind)}: ${rangeText(h)} (${h.theme})${h.enabled === false ? " - off" : ""}</li>`,
+                (h) => html`<li>${s.holidayRowLabel(h.name, h.kind === "event" ? s.eventKind : s.holidayKind)}: ${rangeText(h)} (${themeLabel(h.theme)})${h.enabled === false ? " - off" : ""}</li>`,
               )}
             </ul>`}
         ${this.isAdmin

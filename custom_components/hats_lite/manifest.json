@@ -1,7 +1,7 @@
 {
   "domain": "hats_lite",
   "name": "HATS Lite",
-  "after_dependencies": ["hacs"],
+  "after_dependencies": ["hacs", "marketplace"],
   "codeowners": ["@HomeRiz"],
   "config_flow": true,
   "dependencies": ["frontend", "http", "panel_custom", "websocket_api"],

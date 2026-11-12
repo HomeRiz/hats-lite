@@ -18,6 +18,7 @@ export const strings = {
     fileTheme: "Theme in file",
     fileLoading: "Loading theme...",
     fileError: "Could not load this theme.",
+    resetApplied: "The removed theme was in use, so the Home Assistant theme is applied now",
   },
   browse: stringsBrowse,
   preview: stringsPreview,

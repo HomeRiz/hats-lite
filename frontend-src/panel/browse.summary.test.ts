@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { bundle, catalog, makeHass, mount, settle, themeCalls } from "./browseTestKit";
+import { bundle, catalog, makeHass, mount, settle, themeCalls, catalogQuery } from "./browseTestKit";
 
 beforeEach(() => {
   localStorage.clear();
@@ -19,7 +19,7 @@ describe("browse summary requests", () => {
 
     const listener = vi.fn();
     el.addEventListener("hats-lite-theme-selected", listener);
-    el.shadowRoot!.querySelector<HTMLButtonElement>("button.btn.primary")!.click();
+    catalogQuery<HTMLButtonElement>(el.shadowRoot!, "button.btn.primary")!.click();
     await settle(el);
     expect(themeCalls(hass)).toHaveLength(2);
     expect(themeCalls(hass)[1][0].summary).toBeUndefined();
@@ -29,7 +29,7 @@ describe("browse summary requests", () => {
   it("reuses a full bundle without a second request", async () => {
     const hass = makeHass([catalog[0]]);
     const el = await mount(hass);
-    el.shadowRoot!.querySelector<HTMLButtonElement>("button.btn.primary")!.click();
+    catalogQuery<HTMLButtonElement>(el.shadowRoot!, "button.btn.primary")!.click();
     await settle(el);
     expect(themeCalls(hass)).toHaveLength(1);
   });
@@ -70,7 +70,7 @@ describe("browse rate limit message", () => {
       await vi.advanceTimersByTimeAsync(5000);
       await el.updateComplete;
       expect(themeCalls(hass)).toHaveLength(2);
-      const thumb = el.shadowRoot!.querySelector("hats-lite-thumb")!;
+      const thumb = catalogQuery(el.shadowRoot!, "hats-lite-thumb")!;
       expect(thumb.shadowRoot!.textContent).toContain("Rate limited, try again later");
     } finally {
       vi.useRealTimers();
@@ -86,7 +86,7 @@ describe("browse rate limit message", () => {
       expect(themeCalls(hass)).toHaveLength(2);
       await vi.advanceTimersByTimeAsync(50);
       await el.updateComplete;
-      const thumb = el.shadowRoot!.querySelector("hats-lite-thumb")!;
+      const thumb = catalogQuery(el.shadowRoot!, "hats-lite-thumb")!;
       expect(thumb.shadowRoot!.textContent).toContain("Preview not available");
     } finally {
       vi.useRealTimers();

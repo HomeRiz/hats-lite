@@ -6,7 +6,7 @@ import { DialogBase } from "./peopleDialogs";
 import { coveredSpans, MONTH_DAYS } from "./peopleForm";
 import { rangeLabel } from "./peopleHolidayForm";
 import { renderHolidayList } from "./peopleHolidayList";
-import { selectableThemes, zoneOf } from "./peopleThemes";
+import { zoneOf } from "./peopleThemes";
 import "./peopleHolidayForm";
 import { stringsPeople as s } from "./strings.people";
 
@@ -105,7 +105,7 @@ export class HatsLiteHolidaysDialog extends DialogBase {
       <hats-lite-holiday-form
         .item=${view.item}
         .kind=${view.entry}
-        .themes=${selectableThemes(this.themes)}
+        .themes=${this.themes}
         .zone=${zoneOf(this.hass)}
         .taken=${this.items.map((h) => h.id)}
         .busy=${this.busy}

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { CatalogEntry } from "./contract";
 import { bundle, catalog, makeHass, mount, settle, themeCalls } from "./browseTestKit";
+import { DEFAULT_FULL_NAME } from "./browseDefault";
 
 beforeEach(() => {
   localStorage.clear();
@@ -22,7 +23,7 @@ const many = [entry("alpha"), entry("beta-dark", { description: "dark" }), entry
 describe("visibleEntries", () => {
   it("returns the catalog order when nothing is filtered", async () => {
     const el = await mount(makeHass(many));
-    expect(el.visibleEntries().map((e) => e.full_name)).toEqual(many.map((e) => e.full_name));
+    expect(el.visibleEntries().map((e) => e.full_name)).toEqual([DEFAULT_FULL_NAME, ...many.map((e) => e.full_name)]);
   });
 
   it("follows the search query", async () => {
@@ -30,6 +31,9 @@ describe("visibleEntries", () => {
     el.query = "dark";
     await settle(el);
     expect(el.visibleEntries().map((e) => e.full_name)).toEqual(["o/beta-dark", "o/delta-dark"]);
+    el.query = "unmatched";
+    await settle(el);
+    expect(el.visibleEntries().map((e) => e.full_name)).toEqual([]);
   });
 
   it("follows the chip filter", async () => {
@@ -41,7 +45,7 @@ describe("visibleEntries", () => {
 
   it("is empty before the catalog loads", () => {
     const el = document.createElement("hats-lite-browse") as import("./browse").HatsLiteBrowse;
-    expect(el.visibleEntries()).toEqual([]);
+    expect(el.visibleEntries().map((e) => e.full_name)).toEqual([DEFAULT_FULL_NAME]);
   });
 });
 
