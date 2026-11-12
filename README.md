@@ -50,6 +50,7 @@ The panel opens at `/themes`. Each tab has its own address, so you can bookmark 
 - A card type that is not installed is shown as a labelled placeholder.
 - The preview needs the Lovelace module of Home Assistant. It is loaded on demand, which relies on a Home Assistant internal that may change between versions.
 - Only one trial at a time per user.
+- Entries whose name says DO NOT USE or DO NOT MODIFY (anchor holders that some theme files, such as LCARS, define as top level keys) are hidden from the theme list of Home Assistant while HATS Lite is loaded. The theme files are not changed and the real themes keep all their values.
 
 ## Development
 
