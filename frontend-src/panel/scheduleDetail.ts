@@ -2,6 +2,7 @@ import { html, nothing } from "lit";
 import type { Day } from "./scheduleData";
 import { untilText, windowText } from "./scheduleLabels";
 import { stringsSchedule as t } from "./strings.schedule";
+import { themeLabel } from "./peopleThemes";
 
 export type DetailModel = {
   key: string;
@@ -29,7 +30,7 @@ function effective(model: DetailModel) {
   const dark = winner.selection.dark ?? model.darkMode;
   const known = model.installed.includes(theme);
   return html`
-    <p id="effective"><strong>${theme}</strong>${winning ? html` - ${t.itemName(winning)}` : nothing}</p>
+    <p id="effective"><strong>${themeLabel(theme)}</strong>${winning ? html` - ${t.itemName(winning)}` : nothing}</p>
     ${winning?.kind === "override" ? html`<p class="muted">${t.setBy(winning.assigned_by_name ?? t.setByAdmin)}</p>` : nothing}
     <div class="tools">
       <button class="btn" type="button" id="preview-day" ?disabled=${!known} @click=${() => model.onPreview(theme, dark)}>${t.preview}</button>
@@ -47,7 +48,7 @@ function items(model: DetailModel) {
     <ul class="items">
       ${list.map(
         (item) => html`<li class=${item.wins && !item.partial ? "won" : "lost"} data-wins=${item.wins && !item.partial ? "true" : "false"}>
-          <span class="name">${t.itemName(item)}</span> - ${item.theme}
+          <span class="name">${t.itemName(item)}</span> - ${themeLabel(item.theme)}
           <span class="chip ${item.wins ? "ok" : "warn"}">${item.partial ? t.partial : item.wins ? t.wins : t.loses}</span>
           ${windowText(item) ? html`<div class="muted">${windowText(item)}</div>` : nothing}
           ${untilText(item, model.locale, model.zone) ? html`<div class="muted">${untilText(item, model.locale, model.zone)}</div>` : nothing}

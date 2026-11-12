@@ -1,9 +1,10 @@
 export const stringsDesigner = {
   baseLabel: "Start from",
-  baseDefault: "Default",
+  baseDefault: "Home Assistant",
+  themeHint: "Only installed themes are listed. Install more from the Gallery.",
   baseTooLarge:
     "This theme has too many variables (300 at most, counting the base plus the Designer keys). Pick another base.",
-  baseMissing: "The base theme is no longer installed. The Designer went back to Default.",
+  baseMissing: "The base theme is no longer installed. The Designer went back to Home Assistant.",
   baseSkipped: "{count} variables of the base theme were left out because they cannot be saved safely.",
   wallpaperOne: "1 wallpaper entry was removed.",
   wallpaperMany: "{count} wallpaper entries were removed.",

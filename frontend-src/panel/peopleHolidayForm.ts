@@ -4,6 +4,7 @@ import { eventYear, holidayProblem, MAX_NAME, type HolidayProblem } from "./peop
 import { dialogStyles } from "./peopleStyles";
 import { holidayId, PRESET_HOLIDAYS } from "./presetHolidays";
 import { visibleThemeNames } from "./themeVisibility";
+import { themeLabel } from "./peopleThemes";
 import { stringsPeople as s } from "./strings.people";
 
 type Kind = "holiday" | "event";
@@ -113,7 +114,7 @@ export class HatsLiteHolidayForm extends LitElement {
   private themeOptions() {
     const selected = this.draft.theme;
     const names = [s.defaultTheme, ...visibleThemeNames(this.themes, selected).filter((n) => n !== s.defaultTheme)];
-    const options = names.map((n) => html`<option value=${n} ?selected=${n === selected}>${n}</option>`);
+    const options = names.map((n) => html`<option value=${n} ?selected=${n === selected}>${themeLabel(n)}</option>`);
     if (selected && !names.includes(selected)) {
       options.push(html`<option value=${selected} selected>${s.missingTheme(selected)}</option>`);
     }
@@ -158,9 +159,10 @@ export class HatsLiteHolidayForm extends LitElement {
         </div>
         <div class="field">
           <label for="f-theme">${s.theme}</label>
-          <select id="f-theme" @change=${(e: Event) => this.patch({ theme: (e.target as HTMLSelectElement).value })}>
+          <select id="f-theme" aria-describedby="f-theme-hint" @change=${(e: Event) => this.patch({ theme: (e.target as HTMLSelectElement).value })}>
             ${this.themeOptions()}
           </select>
+          <p class="muted" id="f-theme-hint">${s.themeHint}</p>
         </div>
         ${isEvent
           ? html`<label class="choice">

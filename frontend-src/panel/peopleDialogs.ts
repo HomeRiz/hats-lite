@@ -14,6 +14,7 @@ import { endsProblem, MONTH_DAYS, toLocalInput, untilSeconds, validDay, MAX_UNTI
 import { dialogStyles } from "./peopleStyles";
 import { errorMessage, stringsPeople as s } from "./strings.people";
 import { visibleThemeNames } from "./themeVisibility";
+import { themeLabel } from "./peopleThemes";
 
 export type DoneDetail = { message: string; selfApply?: Selection };
 
@@ -105,9 +106,9 @@ export class DialogBase extends LitElement {
 
   protected themeOptions(selected: string) {
     const names = [s.defaultTheme, ...visibleThemeNames(this.themes, selected).filter((n) => n !== s.defaultTheme)];
-    const options = names.map((n) => html`<option value=${n} ?selected=${n === selected}>${n}</option>`);
+    const options = names.map((n) => html`<option value=${n} ?selected=${n === selected}>${themeLabel(n)}</option>`);
     if (selected && !names.includes(selected)) {
-      const label = this.installed.includes(selected) ? selected : s.missingTheme(selected);
+      const label = this.installed.includes(selected) ? themeLabel(selected) : s.missingTheme(selected);
       options.push(html`<option value=${selected} selected>${label}</option>`);
     }
     return options;
@@ -176,9 +177,10 @@ export class HatsLiteAssignDialog extends DialogBase {
         <form @submit=${this.onSubmit}>
           <div class="field">
             <label for="theme">${s.theme}</label>
-            <select id="theme" @change=${(e: Event) => (this.theme = (e.target as HTMLSelectElement).value)}>
+            <select id="theme" aria-describedby="theme-hint" @change=${(e: Event) => (this.theme = (e.target as HTMLSelectElement).value)}>
               ${this.themeOptions(this.theme)}
             </select>
+            <p class="muted" id="theme-hint">${s.themeHint}</p>
           </div>
           <fieldset>
             <legend>${s.mode}</legend>
@@ -292,9 +294,10 @@ export class HatsLiteBirthdayDialog extends DialogBase {
           </div>
           <div class="field">
             <label for="theme">${s.theme}</label>
-            <select id="theme" @change=${(e: Event) => (this.theme = (e.target as HTMLSelectElement).value)}>
+            <select id="theme" aria-describedby="theme-hint" @change=${(e: Event) => (this.theme = (e.target as HTMLSelectElement).value)}>
               ${this.themeOptions(this.theme)}
             </select>
+            <p class="muted" id="theme-hint">${s.themeHint}</p>
           </div>
           ${this.renderError()}
           <div class="actions">

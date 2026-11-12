@@ -1,6 +1,7 @@
 import { html, nothing } from "lit";
 import type { Holiday } from "./peopleData";
 import { rangeLabel } from "./peopleHolidayForm";
+import { themeLabel } from "./peopleThemes";
 import { stringsPeople as s } from "./strings.people";
 
 export type ListActions = {
@@ -20,7 +21,7 @@ function row(item: Holiday, actions: ListActions) {
       <span class="chip">${kindLabel(item)}</span>
       ${item.enabled === false ? html`<span class="chip">${s.holidayOff}</span>` : nothing}
       <div class="muted">${rangeLabel(item)}</div>
-      <div class="muted">${s.theme}: ${item.theme}</div>
+      <div class="muted">${s.theme}: ${themeLabel(item.theme)}</div>
     </div>
     <div class="holiday-actions">
       <button class="btn edit" type="button" aria-label=${`${s.holidayEdit} ${item.name}`} ?disabled=${actions.busy} @click=${() => actions.onEdit(item)}>

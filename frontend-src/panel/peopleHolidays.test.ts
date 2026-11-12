@@ -62,7 +62,7 @@ describe("holiday list", () => {
     const text = rows().map((r) => r.textContent ?? "");
     expect(text[0]).toContain("Winter");
     expect(text[0]).toContain("Dec 20 - Jan 5");
-    expect(text[0]).toContain("default");
+    expect(text[0]).toContain("Home Assistant");
     expect(text[0]).toContain(s.holidayKind);
     expect(text[1]).toContain(s.eventKind);
     expect(rows()[0].querySelectorAll("button").length).toBe(2);

@@ -17,10 +17,11 @@ export function renderBaseSelect(
   return html`
     <label class="field base">
       <span>${stringsDesigner.baseLabel}</span>
-      <select class="pill" data-field="base" @change=${onChange}>
+      <select class="pill" data-field="base" aria-describedby="base-hint" @change=${onChange}>
         <option value="" .selected=${selected === ""}>${stringsDesigner.baseDefault}</option>
         ${visibleThemeNames(names, selected).map((name) => html`<option value=${name} .selected=${selected === name}>${name}</option>`)}
       </select>
     </label>
+    <p class="hint" id="base-hint">${stringsDesigner.themeHint}</p>
   `;
 }
