@@ -3,6 +3,7 @@ import type { CatalogEntry, PanelHass, PreviewCandidate, PreviewMode, ThemeBundl
 import type { InstallTarget } from "./previewInstall";
 import { normalizeTheme, repoUrlFor, themesDiffer } from "./previewData";
 import { installedCandidate } from "./scheduleCandidate";
+import { DEFAULT_THEME } from "./browseDefault";
 
 export function buildCandidate(
   entry: CatalogEntry | null,
@@ -56,6 +57,7 @@ export function refreshInstalled(
   current: PreviewCandidate,
   mode: PreviewMode | undefined,
 ): PreviewCandidate | null {
+  if (current.name === DEFAULT_THEME && !current.entry) return current;
   const dark = mode === "dark" ? true : mode === "light" ? false : undefined;
   const next = installedCandidate(hass, current.name, dark)?.candidate ?? null;
   return next && sameCandidate(current, next) ? current : next;

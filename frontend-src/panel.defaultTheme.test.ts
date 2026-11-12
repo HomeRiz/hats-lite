@@ -83,7 +83,7 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-describe("Home Assistant Default in the preview", () => {
+describe("Home Assistant in the preview", () => {
   it("opens the default candidate: installed, applicable, no install or uninstall", async () => {
     await mount();
     await pickDefault();
@@ -131,7 +131,7 @@ describe("Home Assistant Default in the preview", () => {
   });
 });
 
-describe("reset to Home Assistant Default after an uninstall", () => {
+describe("reset to Home Assistant after an uninstall", () => {
   async function removal(detail: Record<string, unknown>): Promise<void> {
     panel.shadowRoot!.querySelector<HTMLButtonElement>("#tab-preview")!.click();
     await panel.updateComplete;

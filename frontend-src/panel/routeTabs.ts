@@ -16,6 +16,7 @@ export type RouteTabsHost = {
   openLinked(detail: ThemeSelectedDetail, item: RouteItem | null): void;
 };
 
+const MAX_ATTEMPTS = 4;
 const BROWSE_ROUTE: ParsedRoute = { tab: "browse", item: null, canonical: true };
 
 export class RouteTabs {
@@ -25,6 +26,11 @@ export class RouteTabs {
   private linkToken = 0;
   private liveDeep: number | null = null;
   private linkRun: Promise<void> = Promise.resolve();
+  private running = 0;
+  private visited = false;
+  private retries = 0;
+  private gone = false;
+  private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly host: RouteTabsHost) {
     this.router = new RouteController({ apply: (route) => this.apply(route), hass: () => host.hass() });
@@ -36,6 +42,39 @@ export class RouteTabs {
 
   hassChanged(): void {
     this.router.retry();
+    this.settle();
+  }
+
+  attach(): void {
+    this.gone = false;
+  }
+
+  dispose(): void {
+    this.gone = true;
+    this.cancel();
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+  }
+
+  settle(): void {
+    if (this.gone) return;
+    if (this.host.tab() !== "preview") {
+      this.visited = false;
+      this.retries = 0;
+      return;
+    }
+    if (this.visited || this.running > 0 || this.retries >= MAX_ATTEMPTS || this.host.previewing()) return;
+    const gallery = this.host.gallery();
+    if (gallery?.loaded) this.openFirst();
+  }
+
+  private later(): void {
+    if (this.timer !== null || this.retries >= MAX_ATTEMPTS) return;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.visited = false;
+      this.settle();
+    }, 1500);
   }
 
   go(tab: RouteTab, item: RouteItem | null = null, replace = false): void {
@@ -45,6 +84,10 @@ export class RouteTabs {
 
   choose(tab: RouteTab, item: RouteItem | null, opening: boolean): void {
     const entering = this.host.tab() !== tab;
+    if (entering) {
+      this.visited = false;
+      this.retries = 0;
+    }
     this.host.show(tab);
     this.go(tab, item);
     if (opening && entering && tab === "preview") this.openFirst();
@@ -87,6 +130,10 @@ export class RouteTabs {
 
   private showRoute(route: ParsedRoute): void {
     const entering = this.host.tab() !== route.tab;
+    if (entering) {
+      this.visited = false;
+      this.retries = 0;
+    }
     this.host.show(route.tab);
     this.host.setModsLink(route.tab === "mods" ? route.item : null);
     if (route.tab !== "preview") return;
@@ -114,6 +161,9 @@ export class RouteTabs {
 
   private startLink(item: RouteItem | null): void {
     const token = ++this.linkToken;
+    this.visited = true;
+    this.running += 1;
+    if (item === null) this.retries += 1;
     if (item !== null) this.liveDeep = token;
     this.linkRun = this.linkRun.then(() => this.runLink(item, token)).catch(() => undefined);
   }
@@ -129,10 +179,19 @@ export class RouteTabs {
         this.router.go("preview", picked, true);
       } else if (result.status === "missing" && item !== null) {
         this.fallback();
+      } else if (item === null) {
+        this.visited = false;
+        this.later();
       }
     } catch {
-      if (live() && item !== null) this.fallback();
+      if (item !== null) {
+        if (live()) this.fallback();
+      } else {
+        this.visited = false;
+        this.later();
+      }
     } finally {
+      this.running -= 1;
       if (this.liveDeep === token) this.liveDeep = null;
     }
   }

@@ -21,7 +21,7 @@ export const stringsBrowse = {
   starGlyph: "★",
   themeErrorDefault: "Could not open this theme. Try again.",
   preview: "Preview",
-  defaultName: "Home Assistant Default",
+  defaultName: "Home Assistant",
   defaultDescription: "The standard Home Assistant look",
   openPreview: "Open preview of",
   filterLabel: "Filter themes",

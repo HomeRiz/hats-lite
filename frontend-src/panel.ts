@@ -138,8 +138,14 @@ export class HatsLitePanel extends LitElement {
     this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
   };
 
+  connectedCallback(): void {
+    super.connectedCallback();
+    this.routes.attach();
+  }
+
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.routes.dispose();
     this.navigator.clear();
   }
 
