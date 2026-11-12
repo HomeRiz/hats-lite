@@ -4,19 +4,27 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-12
+
 ### Added
 
-- A Home Assistant card at the start of the Gallery to preview, try and apply the built-in theme.
 - Support for the Home Assistant Marketplace: the catalog, the installed state and installing or removing a theme from the panel work through the Marketplace on Home Assistant 2026.11 and newer, and through HACS on older versions.
+- A Home Assistant card at the start of the Gallery to preview, try and apply the built-in theme.
+- A hint under every theme picker that only installed themes are listed.
 
 ### Changed
 
 - The panel moved from `/hats-lite` to `/themes`, and every tab and every theme or mod has its own address (`/themes/gallery`, `/themes/preview`, `/themes/designer`, `/themes/people`, `/themes/mods`, with `?owner=&repository=&category=` for an item). The old `/hats-lite` address redirects. If another integration already uses `/themes`, the panel stays at `/hats-lite`.
+- Removing the theme that is applied is allowed and switches the current user to the Home Assistant theme.
+- Placeholder theme entries (names with DO NOT USE or DO NOT MODIFY) are hidden from the pick lists and from Home Assistant's theme list while the integration is loaded.
+- The built-in theme is shown as Home Assistant in the pickers, the lists and the schedule.
+- Theme and catalog downloads check every redirect, and card-mod styles can no longer load external addresses.
 
 ### Fixed
 
 - The Mods tab shows cards installed by the Marketplace as installed.
 - Gallery thumbnails no longer render black after a refresh of the thumbnail atlas: the index is always revalidated and an image that does not match it is not used.
+- Live gallery thumbnails no longer show the background of the theme in use.
 - The Preview tab keeps the Home Assistant theme when Home Assistant updates its state, and the first open of the tab lands on it.
 
 ## [0.1.0] - 2026-11-10
@@ -39,8 +47,6 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 - Workflow actions from `actions/*` are pinned to commit SHAs, as the rest already were.
 - The README and SECURITY.md state what the repository hosts and which routes are served without authentication.
 - Uninstall strips only the trailing `.yaml` from a theme file name.
-- Removing the theme that is applied is allowed and switches the current user to the Home Assistant theme.
-- Placeholder theme entries (names with DO NOT USE or DO NOT MODIFY) are hidden from Home Assistant's theme list while the integration is loaded.
 - The theme fetch only serves repositories that are in the theme catalog, reports permanent and temporary failures with distinct codes, and caches both bounded.
 - Theme files are loaded with a guarded YAML loader that limits aliases, merge keys and nesting, and values are normalized and checked individually (urls, escapes, trailing semicolons).
 - Background uploads are checked by file structure and size, the folder keeps the 20 most recent files that no saved theme uses, and saving refuses reserved and already used theme names.
