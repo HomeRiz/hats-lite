@@ -1,7 +1,7 @@
 import { LitElement, css, html, type PropertyValues } from "lit";
 import { applyScoped } from "../lib/previewScope";
 import type { PreviewMode } from "./contract";
-import { BASELINE } from "./browseBaseline";
+import { BASELINE, THUMB_RESET } from "./browseBaseline";
 import { stringsBrowse as s } from "./strings.browse";
 
 function sameVars(
@@ -248,6 +248,7 @@ export class HatsLiteThumb extends LitElement {
     this.painted = { vars: this.vars, mode: this.mode };
     this.style.cssText = "";
     if (!this.vars) return;
+    applyScoped(this, THUMB_RESET);
     applyScoped(this, BASELINE[this.mode]);
     applyScoped(this, this.vars);
   }
