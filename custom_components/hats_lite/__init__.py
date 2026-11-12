@@ -7,7 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from . import api, real_api, scheduler, services
+from . import api, real_api, scheduler, services, theme_hide
 from .api_effective import async_listen_user_removed
 from .const import DOMAIN, LEGACY_PANEL_PATH, PANEL_ELEMENT, PANEL_PATH, STATIC_URL
 from .store import LiteStore
@@ -98,6 +98,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN]["panels"] = await _register_panels(hass, panel_url)
     frontend.add_extra_js_url(hass, applier_url)
     services.async_register(hass)
+    hass.data[DOMAIN]["theme_hide_stop"] = theme_hide.async_setup(hass, entry)
     entry.async_on_unload(async_listen_user_removed(hass))
     entry.async_on_unload(scheduler.async_listen_config(hass))
     await api.async_restore_watchdogs(hass)
@@ -112,6 +113,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     held = hass.data.get(DOMAIN) or {}
     for path in held.get("panels", ()):
         frontend.async_remove_panel(hass, path, warn_if_unknown=False)
+    held.get("theme_hide_stop", lambda: None)()
+    await theme_hide.async_restore(hass)
     frontend.remove_extra_js_url(hass, held.get("applier_url", APPLIER_URL))
     hass.data.pop(DOMAIN, None)
     return True
