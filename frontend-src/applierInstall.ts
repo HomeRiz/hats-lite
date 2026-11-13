@@ -37,6 +37,7 @@ export function install(factory: typeof createApplier): void {
   };
   let attempts = 0;
   const poll = () => {
+    if (typeof document === "undefined") return;
     const el = element ?? document.querySelector<HomeAssistantElement>("home-assistant");
     if (el) element = el;
     if (el?.hass) {
