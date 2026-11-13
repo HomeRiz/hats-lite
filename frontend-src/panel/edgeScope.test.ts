@@ -4,7 +4,7 @@ import { controls } from "./ui";
 
 function rule(styles: { cssText: string }[], selector: string): string {
   const text = styles.map((x) => x.cssText).join("\n");
-  const escaped = selector.replace(/[.]/g, "\\.");
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return text.match(new RegExp(`\\n\\s*${escaped}\\s*\\{([^}]*)\\}`))![1];
 }
 
