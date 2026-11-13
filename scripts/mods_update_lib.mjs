@@ -25,6 +25,7 @@ const ASSET_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}\.js$/;
 const SPDX_RE = /^[A-Za-z0-9.+-]{1,60}$/;
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 const SMOKE_SCRIPT = fileURLToPath(new URL("./mods_smoke.mjs", import.meta.url));
+const SMOKE_LAUNCHER = fileURLToPath(new URL("./mods_smoke_launch.mjs", import.meta.url));
 const SMOKE_WALL_MS = 8000;
 
 export class RateLimitError extends Error {}
@@ -166,7 +167,6 @@ export function createGithubApi(token, fetchImpl) {
 const SMOKE_TAG_RE = /^[a-z][a-z0-9-]{1,60}$/;
 const SMOKE_OUT_CAP = 8192;
 const SMOKE_NODE_ARGS = ["--disable-proto=delete", "--max-old-space-size=128"];
-const SMOKE_LAUNCH = '"$0" "$@"; s=$?; exit $s';
 
 export function parseSmokeOutput(text) {
   let parsed;
@@ -210,8 +210,8 @@ export function smokeInChild(source, options = {}) {
     };
     try {
       child = spawn(
-        "/bin/sh",
-        ["-c", SMOKE_LAUNCH, process.execPath, ...nodeArgs, "--permission", `--allow-fs-read=${script}`, script],
+        process.execPath,
+        [SMOKE_LAUNCHER, ...nodeArgs, "--permission", `--allow-fs-read=${script}`, script],
         { env: {}, detached: true, stdio: ["pipe", "pipe", "ignore"] },
       );
     } catch {
