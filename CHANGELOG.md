@@ -4,10 +4,11 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-13
+
 ### Added
 
 - The 21 original HATS themes (from the HomeRiz/hats repository) appear in the Gallery as one entry. They can be previewed like any other theme, and an administrator can add one to the Home Assistant themes folder with the Add to my themes button.
-
 - The Designer has a Menu transparency slider that makes the top bar and the sidebar see-through.
 - Themes saved from the Designer appear in the Gallery under the owner Local-Only-Theme, with no stars and no license. They can be previewed and applied like any installed theme.
 
@@ -19,6 +20,7 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 ### Fixed
 
 - Moving the Card tint slider on a theme that was not made in the Designer no longer turns the cards white or flips the text color. Only the card transparency changes and the theme's own card color and text colors are kept.
+- The script that waits for Home Assistant to start no longer fails when the page is already gone, which could make a test run fail at random.
 
 ## [0.2.0] - 2026-11-12
 
