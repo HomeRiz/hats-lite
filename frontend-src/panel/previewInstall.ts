@@ -25,7 +25,7 @@ export function installLink(store: Store, repoUrl: string | undefined): string |
   return storeLink(store, found[1], found[2], "theme");
 }
 
-function codeOf(err: unknown): string {
+export function codeOf(err: unknown): string {
   if (typeof err !== "object" || err === null) return "";
   const code = (err as Record<string, unknown>).code;
   return typeof code === "string" ? code : "";

@@ -1,6 +1,9 @@
 import { nothing, type ReactiveController, type ReactiveControllerHost, type TemplateResult } from "lit";
 import type { PanelHass, PreviewCandidate, PreviewMode } from "./contract";
 import { isApplicable, isTryable } from "./previewData";
+import { isHatsOriginal } from "./hatsOriginals";
+import { AddOriginalFlow } from "./previewAddOriginal";
+import type { OriginalModel } from "./previewAddOriginalView";
 import {
   EVENT_THEME_INSTALLED,
   InstallFlow,
@@ -31,11 +34,13 @@ export type ActionsHost = ReactiveControllerHost &
 
 export class PreviewActions implements ReactiveController {
   readonly flow: InstallFlow;
+  readonly add: AddOriginalFlow;
   private watched: PreviewCandidate | null | undefined;
   private watchedKey: string | undefined;
 
   constructor(private host: ActionsHost) {
     this.flow = new InstallFlow(host);
+    this.add = new AddOriginalFlow(host);
     host.addController(this);
   }
 
@@ -45,6 +50,7 @@ export class PreviewActions implements ReactiveController {
 
   hostDisconnected(): void {
     this.flow.dispose();
+    this.add.dispose();
     this.host.removeEventListener("keydown", this.onKeyDown);
   }
 
@@ -57,7 +63,10 @@ export class PreviewActions implements ReactiveController {
       const same = candidate?.name === this.watched?.name && key === this.watchedKey;
       this.watched = candidate;
       this.watchedKey = key;
-      if (!same) this.flow.reset();
+      if (!same) {
+        this.flow.reset();
+        this.add.reset();
+      }
     }
   }
 
@@ -105,8 +114,9 @@ export class PreviewActions implements ReactiveController {
     const target = this.host.install ?? this.host.uninstall;
     const pending = this.host.nav?.pending === true;
     const store = storeOf(this.host.hass);
+    const original = isHatsOriginal(candidate.fullName);
     return {
-      show: !candidate.installed && !candidate.nameCollision,
+      show: !candidate.installed && !candidate.nameCollision && !original,
       admin,
       hasTarget: !!this.host.install,
       phase: this.flow.phase,
@@ -120,6 +130,32 @@ export class PreviewActions implements ReactiveController {
       stale: this.flow.stale,
       inUse: this.selected().toLowerCase() === candidate.name.toLowerCase(),
     };
+  }
+
+  private originalModel(candidate: PreviewCandidate): OriginalModel {
+    return {
+      original: isHatsOriginal(candidate.fullName),
+      installed: candidate.installed,
+      admin: this.host.hass?.user?.is_admin === true,
+      locked: this.host.trying || this.host.nav?.pending === true,
+      phase: this.add.phase,
+      error: this.add.error,
+    };
+  }
+
+  private addOriginal(): void {
+    const candidate = this.host.candidate;
+    const fullName = candidate?.fullName;
+    if (!candidate || !fullName || !isHatsOriginal(fullName)) return;
+    void this.add.run(candidate.name, () =>
+      this.host.dispatchEvent(
+        new CustomEvent(EVENT_THEME_INSTALLED, {
+          detail: { fullName, partial: true },
+          bubbles: true,
+          composed: true,
+        }),
+      ),
+    );
   }
 
   private confirm(): void {
@@ -142,6 +178,7 @@ export class PreviewActions implements ReactiveController {
     const model = actionsModel(candidate, this.host.trying, this.host.error || this.flow.error, {
       pending: this.host.nav?.pending === true,
       install: this.installModel(candidate),
+      original: this.originalModel(candidate),
     });
     return renderActions(model, {
       onApply: () => this.apply(),
@@ -151,6 +188,7 @@ export class PreviewActions implements ReactiveController {
         onCancel: () => this.flow.cancel(),
         onConfirm: () => this.confirm(),
       },
+      original: { onAdd: () => this.addOriginal() },
     });
   }
 }

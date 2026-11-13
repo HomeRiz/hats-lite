@@ -15,6 +15,7 @@ import {
 import { removing, renderInstallExtras, renderSlot, renderUninstall, usesSlot, type InstallHandlers, type InstallModel } from "./previewInstallView";
 import { renderLookSwitch } from "./realLook";
 import { renderMenuSwitch, renderModNote, renderShell } from "./previewChrome";
+import { renderOriginal, type OriginalHandlers, type OriginalModel } from "./previewAddOriginalView";
 import { frameWidth, sidebarOn, sidebarWidth } from "./previewChromeData";
 import "./sheet";
 import { renderNav, renderNavSide, type NavDirection, type NavModel } from "./previewNav";
@@ -84,15 +85,16 @@ export type ActionsModel = {
   error: string;
   pending: boolean;
   install: InstallModel;
+  original: OriginalModel;
 };
 
-export type ActionsHandlers = { onApply(): void; onTry(): void; install: InstallHandlers };
+export type ActionsHandlers = { onApply(): void; onTry(): void; install: InstallHandlers; original: OriginalHandlers };
 
 export function actionsModel(
   candidate: PreviewCandidate,
   trying: boolean,
   error: string,
-  extra: { pending: boolean; install: InstallModel },
+  extra: { pending: boolean; install: InstallModel; original: OriginalModel },
 ): ActionsModel {
   return {
     applicable: isApplicable(candidate),
@@ -103,6 +105,7 @@ export function actionsModel(
     error,
     pending: extra.pending,
     install: extra.install,
+    original: extra.original,
   };
 }
 
@@ -219,20 +222,21 @@ export function renderNavFrame(
 }
 
 export function renderActions(m: ActionsModel, h: ActionsHandlers): TemplateResult {
-  const busyRemoving = removing(m.install);
+  const busy = removing(m.install) || m.original.phase === "busy";
   const note = m.collision ? "collision-note" : undefined;
   const hideMain = m.install.inUse && !m.collision;
-  const apply = html`<button type="button" class="btn primary success apply" aria-describedby=${ifDefined(note)} ?disabled=${!m.applicable || m.pending || busyRemoving} @click=${h.onApply}>${m.collision && !m.applicable ? s.nameTaken : s.apply}</button>`;
+  const apply = html`<button type="button" class="btn primary success apply" aria-describedby=${ifDefined(note)} ?disabled=${!m.applicable || m.pending || busy} @click=${h.onApply}>${m.collision && !m.applicable ? s.nameTaken : s.apply}</button>`;
   return html`
     <div class="actions">
       ${hideMain ? nothing : usesSlot(m.install) ? renderSlot(m.install, h.install) : apply}
-      ${hideMain ? nothing : html`<button type="button" class="btn try" aria-describedby=${ifDefined(note)} ?disabled=${!m.tryable || m.trying || m.pending || busyRemoving} @click=${h.onTry}>${s.tryButton}</button>`}
+      ${hideMain ? nothing : html`<button type="button" class="btn try" aria-describedby=${ifDefined(note)} ?disabled=${!m.tryable || m.trying || m.pending || busy} @click=${h.onTry}>${s.tryButton}</button>`}
       ${hideMain && !m.install.canUninstall ? html`<span class="chip ok in-use-chip">${s.inUseChip}</span>` : nothing}
       ${renderUninstall(m.install, h.install)}
       ${!m.applicable && m.repo
         ? html`<a class="chip link" href=${m.repo} target="_blank" rel="noopener noreferrer">${s.repoLink}</a>`
         : nothing}
       ${renderInstallExtras(m.install, h.install)}
+      ${renderOriginal(m.original, h.original)}
       ${m.collision ? html`<p id="collision-note" class="chip warn collision" role="status">${m.collision}</p>` : nothing}
       ${m.error ? html`<p class="error" role="alert">${m.error}</p>` : nothing}
     </div>`;
