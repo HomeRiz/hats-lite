@@ -93,6 +93,7 @@ describe("browse thumbnails", () => {
     const hass = makeHass(many);
     hass.connection.sendMessagePromise.mockImplementation((msg) => {
       if (msg.type === "hats_lite/catalog") return Promise.resolve({ themes: many });
+      if (msg.type === "hats_lite/local_themes") return Promise.resolve({ names: [] });
       active += 1;
       peak = Math.max(peak, active);
       return new Promise((resolve) => {

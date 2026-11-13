@@ -4,6 +4,22 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 
 ## [Unreleased]
 
+### Added
+
+- The 21 original HATS themes (from the HomeRiz/hats repository) appear in the Gallery as one entry. They can be previewed like any other theme, and an administrator can add one to the Home Assistant themes folder with the Add to my themes button.
+
+- The Designer has a Menu transparency slider that makes the top bar and the sidebar see-through.
+- Themes saved from the Designer appear in the Gallery under the owner Local-Only-Theme, with no stars and no license. They can be previewed and applied like any installed theme.
+
+### Changed
+
+- The Designer remembers the name of a theme it saved: picking one of your own themes as the base fills the name, so saving updates it. Picking any other theme asks for a new name, so an installed theme is never overwritten.
+- The preview starts on the first real dashboard of the instance. The Map dashboard is listed last, and the empty generated Overview is left out of the list once another dashboard has content.
+
+### Fixed
+
+- Moving the Card tint slider on a theme that was not made in the Designer no longer turns the cards white or flips the text color. Only the card transparency changes and the theme's own card color and text colors are kept.
+
 ## [0.2.0] - 2026-11-12
 
 ### Added

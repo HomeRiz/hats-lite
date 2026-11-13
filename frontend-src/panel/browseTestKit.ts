@@ -38,6 +38,7 @@ export function makeHass(
 ) {
   const send = vi.fn((msg: Record<string, unknown>) => {
     if (msg.type === "hats_lite/catalog") return Promise.resolve({ source: "live", themes: entries });
+    if (msg.type === "hats_lite/local_themes") return Promise.resolve({ names: [] });
     return Promise.resolve(themeHandler(msg));
   });
   return { connection: { sendMessagePromise: send, subscribeMessage: vi.fn() }, ...extra };

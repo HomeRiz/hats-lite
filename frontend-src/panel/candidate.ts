@@ -4,6 +4,7 @@ import type { InstallTarget } from "./previewInstall";
 import { normalizeTheme, repoUrlFor, themesDiffer } from "./previewData";
 import { installedCandidate } from "./scheduleCandidate";
 import { DEFAULT_THEME } from "./browseDefault";
+import { isHatsOriginal } from "./hatsOriginals";
 
 export function buildCandidate(
   entry: CatalogEntry | null,
@@ -41,12 +42,20 @@ export function sameCandidate(a: PreviewCandidate, b: PreviewCandidate): boolean
 }
 
 export function installTarget(entry: CatalogEntry | null, candidate: PreviewCandidate | null): InstallTarget | null {
-  if (!entry || !candidate || candidate.installed || !entry.hacs_id) return null;
+  if (!entry || !candidate || candidate.installed || !entry.hacs_id || isHatsOriginal(entry)) return null;
   return { fullName: entry.full_name, hacsId: entry.hacs_id };
 }
 
 export function uninstallTarget(entry: CatalogEntry | null, candidate: PreviewCandidate | null): InstallTarget | null {
-  if (!entry || !candidate || !candidate.installed || candidate.nameCollision || !entry.installed || !entry.hacs_id) {
+  if (
+    !entry ||
+    !candidate ||
+    !candidate.installed ||
+    candidate.nameCollision ||
+    !entry.installed ||
+    !entry.hacs_id ||
+    isHatsOriginal(entry)
+  ) {
     return null;
   }
   return { fullName: entry.full_name, hacsId: entry.hacs_id };

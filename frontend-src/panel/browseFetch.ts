@@ -1,6 +1,7 @@
 import { callWS } from "../lib/ws";
 import { classifyError, isBundle } from "./browseCatalog";
 import { namesOfResponse, type KnownNames } from "./browseNames";
+import { isLocalEntry, localBundle, localName } from "./browseLocal";
 import type { CatalogEntry, PanelHass, ThemeBundle } from "./contract";
 import { stringsBrowse } from "./strings.browse";
 
@@ -33,6 +34,12 @@ export function fetchBundle(
   theme?: string,
 ): Promise<FetchedBundle> {
   if (!hass) return Promise.reject(new Error(stringsBrowse.themeErrorDefault));
+  if (isLocalEntry(entry)) {
+    const themes = localBundle(hass, entry);
+    if (!themes) return Promise.reject(new Error(stringsBrowse.themeErrorDefault));
+    known.add(entry.full_name, [localName(entry)]);
+    return Promise.resolve({ themes, summary: false, names: [localName(entry)] });
+  }
   const msg: Record<string, unknown> = {
     type: THEME_MSG,
     full_name: entry.full_name,

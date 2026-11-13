@@ -1,3 +1,6 @@
+from .hats_originals import FULL_NAME, catalog_entry as original_entry
+
+
 class CatalogError(Exception):
     pass
 
@@ -22,6 +25,13 @@ def _stars(record):
 
 def _sorted(entries):
     return sorted(entries, key=lambda e: (-e["stars"], e["full_name"]))
+
+
+def _with_original(entries):
+    wanted = FULL_NAME.lower()
+    if any(isinstance(e["full_name"], str) and e["full_name"].lower() == wanted for e in entries):
+        return entries
+    return entries + [original_entry()]
 
 
 def normalize_hacs_entries(entries):
@@ -80,11 +90,11 @@ async def load_catalog(hacs_loader, public_loader):
     if isinstance(records, list):
         entries = normalize_hacs_entries(records)
         if entries:
-            return entries, kind
+            return _with_original(entries), kind
     try:
         data = await public_loader()
     except Exception as err:
         raise CatalogError("Theme catalog unavailable") from err
     if not isinstance(data, dict):
         raise CatalogError("Theme catalog unavailable")
-    return normalize_public_catalog(data), "public"
+    return _with_original(normalize_public_catalog(data)), "public"

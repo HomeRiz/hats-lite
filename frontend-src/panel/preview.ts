@@ -166,7 +166,7 @@ export class HatsLitePreview extends LitElement {
     );
     if (picked.stale) return;
     if (picked.hit) {
-      this.dashboardUrl = picked.hit.urlPath;
+      [this.dashboardUrl, this.dashboards] = [picked.hit.urlPath, picked.options];
       this.applyEntry(picked.hit.entry, picked.hit.urlPath);
       return;
     }

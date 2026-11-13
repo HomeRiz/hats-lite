@@ -1,6 +1,6 @@
-import { buildDesignerVars, type DesignerInput } from "./designer";
+import { MENU_KEYS, MENU_MAX, buildDesignerVars, type DesignerInput } from "./designer";
 import { baseVerdict } from "./designerBaseFilter";
-import { toHex, type Rgb } from "./designerColors";
+import { parseHex, rgba, toHex, type Rgb } from "./designerColors";
 import { positionFromTint, tintFromPosition, tintLimit } from "./designerPalette";
 
 export type Mode = "dark" | "light";
@@ -11,6 +11,7 @@ export type Controls = {
   radius: number;
   blur: number;
   tint: number;
+  menu?: number;
   mode: Mode;
 };
 
@@ -31,6 +32,7 @@ const LENGTH = /^(-?\d*\.?\d+)\s*(px|rem|em)?$/i;
 const BLUR = /blur\(\s*(\d*\.?\d+)\s*(px|rem|em)?\s*\)/i;
 const ROOT_PX = 16;
 export const MAX_VARIABLES = 300;
+const CARD = "ha-card-background";
 const MAX_VALUE = 4096;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -147,6 +149,12 @@ function cardAlpha(vars: Record<string, string>): number | null {
   return null;
 }
 
+function menuControl(vars: Record<string, string>): { menu?: number } {
+  const alpha = parseCssColor(vars[MENU_KEYS[0]])?.alpha;
+  const menu = alpha === undefined ? 0 : clamp(Math.round((1 - alpha) * 100), 0, MENU_MAX);
+  return menu > 0 ? { menu } : {};
+}
+
 function pickMode(theme: unknown, current: Mode): Mode {
   const defined = themeModes(theme);
   return defined.length === 1 ? defined[0] : current;
@@ -173,6 +181,7 @@ export function deriveControls(theme: unknown, current: Mode, fallback: Controls
     radius: radius === null ? fallback.radius : Math.round(clamp(radius, 0, 48)),
     blur: blur === null ? fallback.blur : Math.round(clamp(blur, 0, 40)),
     tint: alpha === null ? fallback.tint : tintPosition(alpha, mode, main),
+    ...menuControl(vars),
   };
 }
 
@@ -196,9 +205,21 @@ export function baselineInput(base: Controls, mode: Mode): DesignerInput {
     radius: base.radius,
     blur: base.blur,
     tint: tintFromPosition(base.tint, tintLimit(base.main, mode)),
+    menu: base.menu,
     background: { kind: "none" },
     mode,
   };
+}
+
+function recolor(
+  resolved: Record<string, string>,
+  out: Record<string, string>,
+  from: string,
+  to: string,
+  alpha: number | undefined,
+): void {
+  const own = parseCssColor(resolved[from])?.hex;
+  if (own && alpha !== undefined) out[to] = rgba(parseHex(own), alpha);
 }
 
 export function mergeOnBase(
@@ -208,7 +229,18 @@ export function mergeOnBase(
 ): Record<string, string> {
   const vars = buildDesignerVars(input);
   if (!theme) return vars;
-  return overlayChanges(theme, input.mode, buildDesignerVars(baselineInput(base, input.mode)), vars);
+  const start = baselineInput(base, input.mode);
+  const before = buildDesignerVars(start);
+  const out = overlayChanges(theme, input.mode, before, buildDesignerVars({ ...input, tint: start.tint }));
+  const resolved = resolveThemeVars(theme, input.mode);
+  if (vars[CARD] !== before[CARD]) {
+    const from = [CARD, "card-background-color"].find((key) => parseCssColor(resolved[key])) ?? CARD;
+    recolor(resolved, out, from, CARD, parseCssColor(vars[CARD])?.alpha);
+  }
+  for (const key of MENU_KEYS) {
+    if (vars[key] !== before[key]) recolor(resolved, out, key, key, parseCssColor(vars[key])?.alpha);
+  }
+  return out;
 }
 
 export function exceedsLimit(vars: Record<string, string>): boolean {

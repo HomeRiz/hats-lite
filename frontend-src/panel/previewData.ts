@@ -137,6 +137,8 @@ export function safeRepoUrl(url: string | undefined): string | undefined {
   return url && /^https:\/\//i.test(url) ? url : undefined;
 }
 
+export const MAP_DASHBOARD = "map";
+
 export async function listDashboards(hass: PanelHass): Promise<DashboardOption[]> {
   const rows = await hass.connection.sendMessagePromise({ type: "lovelace/dashboards/list" });
   const options: DashboardOption[] = [{ url_path: null, title: s.defaultDashboard }];
@@ -149,7 +151,7 @@ export async function listDashboards(hass: PanelHass): Promise<DashboardOption[]
       });
     }
   }
-  return options;
+  return [...options.filter((o) => o.url_path !== MAP_DASHBOARD), ...options.filter((o) => o.url_path === MAP_DASHBOARD)];
 }
 
 export async function loadLovelaceConfig(

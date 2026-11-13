@@ -61,27 +61,34 @@ export async function fetchEntry(
   }
 }
 
-export type DashboardPick = {
+export type DashboardPick<T extends { url_path: string | null } = { url_path: string | null }> = {
   hit?: { entry: Extract<DashboardEntry, { status: "ok" }>; urlPath: string | null };
   entries: DashboardEntry[];
+  options: T[];
   stale: boolean;
 };
 
-export async function pickDashboard(
-  options: Array<{ url_path: string | null }>,
+function emptyDefault(first: DashboardEntry | undefined): boolean {
+  return first !== undefined && (first.status === "notfound" || (first.status === "ok" && !hasCards(first.config)));
+}
+
+export async function pickDashboard<T extends { url_path: string | null }>(
+  options: T[],
   load: (urlPath: string | null) => Promise<DashboardEntry>,
   isStale: () => boolean,
-): Promise<DashboardPick> {
+): Promise<DashboardPick<T>> {
   const entries: DashboardEntry[] = [];
   for (const option of options) {
     const entry = await load(option.url_path);
-    if (isStale()) return { entries, stale: true };
+    if (isStale()) return { entries, options, stale: true };
     entries.push(entry);
     if (entry.status === "ok" && hasCards(entry.config)) {
-      return { hit: { entry, urlPath: option.url_path }, entries, stale: false };
+      const dropDefault = option.url_path !== null && options[0]?.url_path === null && emptyDefault(entries[0]);
+      const shown = dropDefault ? options.filter((o) => o.url_path !== null) : options;
+      return { hit: { entry, urlPath: option.url_path }, entries, options: shown, stale: false };
     }
   }
-  return { entries, stale: false };
+  return { entries, options, stale: false };
 }
 
 export function hasCards(config: LovelaceConfig | undefined): boolean {

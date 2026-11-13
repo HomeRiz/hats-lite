@@ -1,4 +1,4 @@
-import { contrast, parseHex } from "./designerColors";
+import { contrast, parseHex, rgba } from "./designerColors";
 import { buildPalette, buildSurfaces } from "./designerPalette";
 
 export type DesignerInput = {
@@ -7,6 +7,7 @@ export type DesignerInput = {
   radius: number;
   blur: number;
   tint: number;
+  menu?: number;
   background?: { kind: "none" | "preset" | "upload" | "url"; value?: string };
   mode: "dark" | "light";
 };
@@ -16,6 +17,8 @@ const UPLOAD_PATH = /^\/local\/hats_lite\/[0-9a-fA-F]{32}\.(png|jpg|webp|gif)$/;
 const HTTPS_URL = /^https:\/\/[^\s'"`\\(){}<>;]+$/;
 const FORBIDDEN = /\.\.|!important/i;
 export const MAX_URL_LENGTH = 2000;
+export const MENU_MAX = 90;
+export const MENU_KEYS = ["app-header-background-color", "sidebar-background-color"] as const;
 
 export type ColorWarning = { id: "main-card" | "accent-card"; ratio: number };
 
@@ -56,6 +59,12 @@ export function buildDesignerVars(input: DesignerInput): Record<string, string> 
     "ha-card-border-radius": `${radius}px`,
     "ha-card-backdrop-filter": `blur(${blur}px)`,
   };
+  const menu = clamp(input.menu ?? 0, 0, MENU_MAX);
+  if (menu > 0) {
+    const alpha = Number((1 - menu / 100).toFixed(2));
+    vars["app-header-background-color"] = rgba(parseHex(main), alpha);
+    vars["sidebar-background-color"] = rgba(parseHex(vars["sidebar-background-color"]), alpha);
+  }
   const bg = input.background;
   if (bg && bg.kind !== "none") {
     vars["lovelace-background"] =

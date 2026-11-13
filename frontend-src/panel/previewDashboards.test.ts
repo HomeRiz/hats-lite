@@ -92,7 +92,7 @@ describe("initial dashboard selection", () => {
   it("labels the generated default in the selector", async () => {
     const { hass } = makeHass([{ url_path: "home", title: "Home" }], {
       default: notFound,
-      home: withCards(),
+      home: { views: [] },
     });
     const el = await mount(hass);
     const labels = Array.from(selects(el)[0].options).map((o) => o.textContent?.trim());
@@ -148,13 +148,13 @@ describe("switching dashboards", () => {
       await vi.waitFor(() => expect(el.notice).not.toBe(s.loading));
       await el.updateComplete;
     };
-    await change("1");
+    await change("2");
     expect(el.shadowRoot!.querySelector(".notice")?.textContent).toBe(s.noViews);
     expect(selects(el)).toHaveLength(1);
-    await change("2");
-    await vi.waitFor(() => expect(el.cards).toHaveLength(3));
     await change("1");
+    await vi.waitFor(() => expect(el.cards).toHaveLength(3));
     await change("2");
+    await change("1");
     await change("0");
     await vi.waitFor(() => expect(el.cards).toHaveLength(1));
     expect(configCalls(send)).toEqual([null, "map", "home"]);
