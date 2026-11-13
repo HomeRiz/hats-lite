@@ -1,27 +1,14 @@
 import { LitElement, html, nothing, type PropertyValues } from "lit";
 import { callWS } from "../lib/ws";
-import {
-  CATALOG_MSG,
-  RATE_LIMIT_RETRY_MS,
-  RETRY_BASE_MS,
-  fetchBundle,
-  retryDelay,
-  type CatalogResponse,
-} from "./browseFetch";
+import { CATALOG_MSG, RATE_LIMIT_RETRY_MS, RETRY_BASE_MS, fetchBundle, retryDelay, type CatalogResponse } from "./browseFetch";
 import { THEME_CACHE_MAX, ThemeCache, cachedVars, firstTheme } from "./browseCache";
-import {
-  classifyError,
-  errorMessage,
-  matchesQuery,
-  readCatalogCache,
-  toEntries,
-  writeCatalogCache,
-} from "./browseCatalog";
+import { classifyError, errorMessage, matchesQuery, readCatalogCache, toEntries, writeCatalogCache } from "./browseCatalog";
 import { renderToolbar } from "./browseToolbar";
 import { entryKey, modeForFilter, passesFilter, type FilterId } from "./browseFilters";
 import { AtlasStore, type AtlasTheme } from "./browseAtlas";
 import { renderCard, type CardModel } from "./browseCard";
 import { DEFAULT_ENTRY, defaultBundle, defaultShown, isDefaultEntry, renderDefaultCard } from "./browseDefault";
+import { isLocalEntry, readLocalEntries, replaceLocal } from "./browseLocal";
 import { emptyMessage } from "./browseEmpty";
 import { KnownNames, installedKind, isInUse, isInstalledRepo, sameList } from "./browseNames";
 import { BundleCache, openBundle } from "./browseBundles";
@@ -77,6 +64,7 @@ export class HatsLiteBrowse extends LitElement {
   filter: FilterId = "all";
   mode: PreviewMode = "dark";
   states = new Map<string, LoadState>();
+  private themesRef: unknown;
   private hassRef?: PanelHass;
   private started = false;
   private modeTouched = false;
@@ -104,6 +92,8 @@ export class HatsLiteBrowse extends LitElement {
     const themes = value?.themes;
     const names = Object.keys(themes?.themes ?? {});
     if (!sameList(names, this.installedThemes)) this.installedThemes = names;
+    if (this.started && themes?.themes !== this.themesRef) void this.loadLocal();
+    this.themesRef = themes?.themes;
     const current = value?.selectedTheme?.theme ?? themes?.theme ?? "default";
     if (current !== this.currentTheme) this.currentTheme = current;
     if (themes?.darkMode !== this.darkMode) this.darkMode = themes?.darkMode;
@@ -151,18 +141,25 @@ export class HatsLiteBrowse extends LitElement {
     try {
       const res = await callWS<CatalogResponse | undefined>(hass, { type: CATALOG_MSG });
       this.entries = toEntries(res?.themes);
+      void this.loadLocal();
       this.fromCache = false;
       this.error = "";
-      writeCatalogCache(this.entries);
+      writeCatalogCache(this.entries.filter((entry) => !isLocalEntry(entry)));
     } catch {
       const cached = readCatalogCache();
       this.entries = cached ?? [];
       this.fromCache = cached !== null;
       this.error = stringsBrowse.loadError;
+      void this.loadLocal();
     } finally {
       this.loading = false;
       this.loaded = true;
     }
+  }
+
+  private async loadLocal(): Promise<void> {
+    const local = await readLocalEntries(this.hassRef);
+    this.entries = replaceLocal(this.entries, local);
   }
 
   private setState(key: string, state: LoadState | null): void {

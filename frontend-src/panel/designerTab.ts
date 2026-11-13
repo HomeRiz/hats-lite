@@ -1,5 +1,5 @@
 import { LitElement, html, nothing, type PropertyValues, type TemplateResult } from "lit";
-import type { DesignerInput } from "../lib/designer";
+import { MENU_MAX, type DesignerInput } from "../lib/designer";
 import { DEFAULT_CONTROLS, exceedsLimit, mergeOnBase, type Controls } from "../lib/designerBase";
 import { effectiveTintPercent, tintFromPosition, tintLimit } from "../lib/designerPalette";
 import { callWS } from "../lib/ws";
@@ -14,8 +14,9 @@ import {
 } from "./contract";
 import { baseNames, renderBaseSelect } from "./designerBaseView";
 import { baseMissing, pickBase, baseTheme, buildSaved, skippedCount, wallpaperCount, type Saved } from "./designerBuild";
+import { baseNameProblem, nameForBase, readLocalNames } from "./designerNames";
 import { renderModeSection, renderNotices } from "./designerNotices";
-import { renderColorRow, renderRange, renderSaveBar, renderUploadArea } from "./designerControls";
+import { renderBackgroundChoices, renderColorRow, renderRange, renderSaveBar, renderUploadArea } from "./designerControls";
 import { designerStyles } from "./designerStyles";
 import {
   errorInfo,
@@ -32,13 +33,14 @@ import "./preview";
 import { stringsDesigner } from "./strings.designer";
 
 type Background = NonNullable<DesignerInput["background"]>;
-type SliderKey = "radius" | "glassBlur";
+type SliderKey = "radius" | "glassBlur" | "menu";
 const PRESETS: readonly { label: string; value: string }[] = [];
 const HIDDEN_PREVIEW_CONTROLS = ["tablet", "mode"] as const;
-const CONTROL_KEYS = ["base", "main", "accent", "radius", "glassBlur", "tint", "mode", "background"] as const;
+const CONTROL_KEYS = ["base", "main", "accent", "radius", "glassBlur", "tint", "menu", "mode", "background"] as const;
 const SLIDERS: Record<SliderKey, { label: string; min: number; max: number; unit: string }> = {
   radius: { label: stringsDesigner.radius, min: 0, max: 48, unit: "px" },
   glassBlur: { label: stringsDesigner.blur, min: 0, max: 40, unit: "px" },
+  menu: { label: stringsDesigner.menu, min: 0, max: MENU_MAX, unit: "%" },
 };
 
 export class HatsLiteDesigner extends LitElement {
@@ -50,6 +52,7 @@ export class HatsLiteDesigner extends LitElement {
     radius: { state: true },
     glassBlur: { state: true },
     tint: { state: true },
+    menu: { state: true },
     mode: { state: true },
     background: { state: true },
     candidate: { state: true },
@@ -77,12 +80,15 @@ export class HatsLiteDesigner extends LitElement {
   radius = 12;
   glassBlur = 10;
   tint = 30;
+  menu = 0;
   mode: PreviewMode = "dark";
   background: Background = { kind: "none" };
   candidate?: PreviewCandidate;
   errorField: ErrorField = "";
   errorMessage = "";
   themeName = "";
+  localNames: string[] = [];
+  localLoaded = false;
   uploading = false;
   uploadError = "";
   uploadNotice = "";
@@ -92,6 +98,7 @@ export class HatsLiteDesigner extends LitElement {
   baseNotice = "";
 
   protected willUpdate(changed: PropertyValues): void {
+    if (this.hass && !this.localLoaded) void this.loadLocalNames(this.hass);
     if (baseMissing(this.hass, this.base)) {
       this.base = "";
       this.baseControls = DEFAULT_CONTROLS;
@@ -121,21 +128,13 @@ export class HatsLiteDesigner extends LitElement {
           </section>
           <section class="group">
             <h3>${stringsDesigner.shape}</h3>
-            ${(Object.keys(SLIDERS) as SliderKey[]).map((key) => this.renderSlider(key))}
+            ${(["radius", "glassBlur"] as SliderKey[]).map((key) => this.renderSlider(key))}
             ${this.renderTint()}
+            ${this.renderSlider("menu")}
           </section>
           <section class="group">
             <h3>${stringsDesigner.background}</h3>
-            <div class="choices">
-              <button type="button" class="chip-btn" data-action="background-none"
-                aria-pressed=${String(this.background.kind === "none")}
-                @click=${() => this.setBackground({ kind: "none" })}>${stringsDesigner.backgroundNone}</button>
-              ${PRESETS.map(
-                (preset) => html`<button type="button" class="chip-btn"
-                  aria-pressed=${String(this.background.kind === "preset" && this.background.value === preset.value)}
-                  @click=${() => this.setBackground({ kind: "preset", value: preset.value })}>${preset.label}</button>`,
-              )}
-            </div>
+            ${renderBackgroundChoices(this.background.kind, this.background.value, PRESETS, stringsDesigner.backgroundNone, (next) => this.setBackground(next))}
             ${this.errorField === "background" ? html`<p class="error" role="alert">${this.errorMessage}</p>` : nothing}
             ${admin ? this.renderUpload() : html`<p class="hint">${stringsDesigner.uploadAdminOnly}</p>`}
           </section>
@@ -205,9 +204,14 @@ export class HatsLiteDesigner extends LitElement {
       error: this.uploadError,
       notice: this.uploadNotice,
       onPick: () => this.fileInput()?.click(),
-      onDragOver: (event) => this.onDragOver(event),
+      onDragOver: (event) => { event.preventDefault(); this.dragOver = true; },
       onDragLeave: () => { this.dragOver = false; },
-      onDrop: (event) => this.onDrop(event),
+      onDrop: (event) => {
+        event.preventDefault();
+        this.dragOver = false;
+        const file = event.dataTransfer?.files?.[0];
+        if (file) void this.handleFile(file, null);
+      },
       onFile: (event) => this.onFile(event),
     });
   }
@@ -230,6 +234,7 @@ export class HatsLiteDesigner extends LitElement {
       radius: this.radius,
       blur: this.glassBlur,
       tint: this.tintValue(mode),
+      menu: this.menu,
       background: this.background,
       mode,
     };
@@ -244,6 +249,12 @@ export class HatsLiteDesigner extends LitElement {
 
   private warnings(): string[] {
     return warningMessages(this.designerInput(this.mode));
+  }
+
+  private async loadLocalNames(hass: PanelHass): Promise<void> {
+    this.localLoaded = true;
+    this.localNames = await readLocalNames(hass);
+    if (!this.themeName) this.themeName = nameForBase(this.base, this.localNames);
   }
 
   private rebuild(): void {
@@ -281,15 +292,15 @@ export class HatsLiteDesigner extends LitElement {
     this.radius = next.radius;
     this.glassBlur = next.blur;
     this.tint = next.tint;
+    this.menu = next.menu ?? 0;
     this.mode = next.mode;
     this.background = { kind: "none" };
     this.uploadNotice = "";
     this.saveMessage = "";
+    this.themeName = nameForBase(this.base, this.localNames);
   }
 
-  private setText(key: "main" | "accent", event: Event): void {
-    this[key] = (event.target as HTMLInputElement).value;
-  }
+  private setText(key: "main" | "accent", event: Event): void { this[key] = (event.target as HTMLInputElement).value; }
 
   private setNumber(key: SliderKey, event: Event): void {
     this[key] = Number((event.target as HTMLInputElement).value);
@@ -306,18 +317,6 @@ export class HatsLiteDesigner extends LitElement {
 
   private fileInput(): HTMLInputElement | null {
     return this.renderRoot.querySelector<HTMLInputElement>('input[type="file"]');
-  }
-
-  private onDragOver(event: DragEvent): void {
-    event.preventDefault();
-    this.dragOver = true;
-  }
-
-  private onDrop(event: DragEvent): void {
-    event.preventDefault();
-    this.dragOver = false;
-    const file = event.dataTransfer?.files?.[0];
-    if (file) void this.handleFile(file, null);
   }
 
   private setBackground(background: Background): void {
@@ -364,7 +363,7 @@ export class HatsLiteDesigner extends LitElement {
     const hass = this.hass;
     if (!hass) return;
     const name = this.themeName.trim();
-    const problem = nameProblem(name);
+    const problem = nameProblem(name) ?? baseNameProblem(name, this.base, this.localNames);
     if (problem) {
       this.saveFailed = true;
       this.saveMessage = problem;
@@ -384,6 +383,7 @@ export class HatsLiteDesigner extends LitElement {
         }),
       );
       this.saveFailed = false;
+      if (!this.localNames.includes(name)) this.localNames = [...this.localNames, name];
       this.saveMessage = restartReminder(saveSuccessMessage(response), this.background);
     } catch (err) {
       this.saveFailed = true;

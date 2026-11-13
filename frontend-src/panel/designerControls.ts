@@ -97,3 +97,21 @@ export function renderSaveBar(spec: {
     </div>
   `;
 }
+
+export function renderBackgroundChoices(
+  kind: string,
+  value: string | undefined,
+  presets: readonly { label: string; value: string }[],
+  none: string,
+  pick: (background: { kind: "none" | "preset"; value?: string }) => void,
+) {
+  return html`<div class="choices">
+    <button type="button" class="chip-btn" data-action="background-none"
+      aria-pressed=${String(kind === "none")} @click=${() => pick({ kind: "none" })}>${none}</button>
+    ${presets.map(
+      (preset) => html`<button type="button" class="chip-btn"
+        aria-pressed=${String(kind === "preset" && value === preset.value)}
+        @click=${() => pick({ kind: "preset", value: preset.value })}>${preset.label}</button>`,
+    )}
+  </div>`;
+}

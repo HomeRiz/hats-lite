@@ -3,6 +3,7 @@ import type { AtlasStore } from "./browseAtlas";
 import { renderAtlasThumb, renderLicenseChip } from "./browseAtlasView";
 import type { CatalogEntry, PreviewMode } from "./contract";
 import type { InstalledKind } from "./browseNames";
+import { isLocalEntry } from "./browseLocal";
 import { ownerName, repoName } from "./browseFilters";
 import { stringsBrowse as s } from "./strings.browse";
 
@@ -38,6 +39,7 @@ function installedChip(kind: InstalledKind) {
 export function renderCard(m: CardModel, open: () => void) {
   const name = repoName(m.entry.full_name);
   const owner = ownerName(m.entry.full_name);
+  const local = isLocalEntry(m.entry);
   const stars = `${s.starsLabel}: ${m.entry.stars}`;
   return html`
     <article class="card" data-key=${m.key}>
@@ -65,10 +67,12 @@ export function renderCard(m: CardModel, open: () => void) {
         <div class="chips">
           ${installedChip(m.installedKind)}
           ${m.active ? html`<span class="chip ok">${s.inUse}</span>` : nothing}
-          <span class="chip" title=${stars} aria-label=${stars}
-            >${s.starGlyph} ${m.entry.stars}</span
-          >
-          ${renderLicenseChip(m.license)}
+          ${local
+            ? nothing
+            : html`<span class="chip" title=${stars} aria-label=${stars}
+                  >${s.starGlyph} ${m.entry.stars}</span
+                >
+                ${renderLicenseChip(m.license)}`}
         </div>
         ${m.error ? html`<p class="card-error" role="alert">${m.error}</p>` : nothing}
         <div class="actions">
