@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 
 ## [Unreleased]
 
+### Changed
+
+- The README explains the installation with the Marketplace and with HACS, where Themes appears afterwards, and what the two options of the integration do.
+
 ## [0.3.0] - 2026-11-13
 
 ### Added
