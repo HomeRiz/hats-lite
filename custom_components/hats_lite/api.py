@@ -8,7 +8,6 @@ except ImportError:
     import voluptuous as vol
 
 from homeassistant.components import websocket_api
-from homeassistant.components.frontend import DATA_THEMES
 from homeassistant.core import HomeAssistant, callback
 
 from . import scheduler
@@ -16,25 +15,18 @@ from .api_advanced import async_register_advanced_commands
 from .api_calendar import async_register_calendar_commands
 from .api_install import ws_install_theme, ws_uninstall_theme
 from .api_mods import async_register_mods_commands
+from .api_originals import async_register_originals_commands
 from .api_people import async_register_people_commands
 from .api_schema import modes, variables
 from .catalog import CatalogError, load_catalog
-from .const import DOMAIN, UPLOAD_DIR_NAME
+from .const import DOMAIN
 from .outcome_api import ws_outcome_ack
 from .removal import THEME_UNAVAILABLE, UNAVAILABLE_TEXT, is_removing
 from .selection import MAX_NAME, valid_selection
 from .sources import manager_loader, public_loader
 from .theme_api import ws_theme
-from .theme_save import (
-    check_backgrounds,
-    files_defining,
-    inspect_target,
-    is_reserved,
-    read_previous,
-    restore,
-)
-from .theme_files import DroppedValuesError, _build_theme_text, _write_theme, theme_file_name, theme_slug
-from .theme_sanitizer import ThemeError
+from .theme_files import _write_theme, theme_file_name, theme_slug
+from .theme_saver import SaveError, save_theme
 from .trial import accept, phase, revert_due, start_trial, trial_to_dict
 from .values import finite_number
 from .views import record_www_state
@@ -315,50 +307,13 @@ def ws_subscribe(hass, connection, msg):
 async def ws_save_theme(hass, connection, msg):
     if _loaded(hass, connection, msg) is None:
         return
-    name = msg["name"]
-    if is_reserved(name):
-        connection.send_error(msg["id"], "reserved_name", "This theme name is reserved")
-        return
-    file_name = theme_file_name(name)
     try:
-        if file_name is None:
-            raise ThemeError("Theme name has no usable characters")
-        uploads = hass.config.path("www", UPLOAD_DIR_NAME)
-        await hass.async_add_executor_job(check_backgrounds, msg["variables"], msg["modes"], uploads)
-        text = await hass.async_add_executor_job(_build_theme_text, name, msg["variables"], msg["modes"])
-    except DroppedValuesError as err:
-        connection.send_error(msg["id"], "invalid_value", str(err))
+        result = await save_theme(
+            hass, msg["name"], msg["variables"], msg["modes"], write=_write_theme
+        )
+    except SaveError as err:
+        connection.send_error(msg["id"], err.code, err.message)
         return
-    except ThemeError as err:
-        connection.send_error(msg["id"], "invalid_theme", str(err))
-        return
-    directory = hass.config.path("themes")
-    files = await hass.async_add_executor_job(files_defining, directory, name)
-    own = file_name in files
-    existed, defined = await hass.async_add_executor_job(inspect_target, directory, file_name)
-    installed = {key.casefold() for key in hass.data.get(DATA_THEMES) or {}}
-    foreign_name = defined is None or any(item.casefold() != name.casefold() for item in defined)
-    defined_here = defined is not None and any(item.casefold() == name.casefold() for item in defined)
-    unscanned = getattr(files, "overflow", False) and not own and not defined_here
-    if (
-        any(item != file_name for item in files)
-        or foreign_name
-        or unscanned
-        or (name.casefold() in installed and not own)
-    ):
-        connection.send_error(msg["id"], "name_exists", "A theme with this name already exists")
-        return
-    previous = await hass.async_add_executor_job(read_previous, directory, file_name)
-    try:
-        await hass.async_add_executor_job(_write_theme, directory, file_name, text)
-        await hass.services.async_call("frontend", "reload_themes", blocking=True)
-    except Exception:
-        await hass.async_add_executor_job(restore, directory, file_name, previous)
-        connection.send_error(msg["id"], "save_failed", "The theme could not be saved")
-        return
-    result = {"file": file_name}
-    if existed:
-        result["overwrote"] = True
     connection.send_result(msg["id"], result)
 
 
@@ -385,3 +340,4 @@ def async_register_commands(hass: HomeAssistant):
     async_register_mods_commands(hass)
     async_register_advanced_commands(hass)
     async_register_calendar_commands(hass)
+    async_register_originals_commands(hass)

@@ -9,6 +9,7 @@ except ImportError:
 from homeassistant.components import websocket_api
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from . import hats_originals
 from .const import DOMAIN
 from .catalog import CatalogError
 from .theme_budget import FETCH_BUDGET
@@ -155,12 +156,24 @@ def _admit(user_id):
     return admit
 
 
-async def _load(hass, session, msg, full_name, user_id, commit):
-    key = (full_name, commit, msg.get("path"))
+def _is_original(full_name):
+    return full_name.lower() == hats_originals.FULL_NAME.lower()
+
+
+async def _fetch(session, full_name, commit, path):
+    if _is_original(full_name):
+        return await hats_originals.fetch_text(session)
+    return await fetch_theme_yaml(session, full_name, commit, path)
+
+
+async def _load(hass, session, full_name, commit, path, user_id):
+    if _is_original(full_name):
+        path = None
+    key = (full_name, commit, path)
 
     async def produce():
         try:
-            text = await fetch_theme_yaml(session, full_name, commit, msg.get("path"))
+            text = await _fetch(session, full_name, commit, path)
         except ThemeFetchError as err:
             raise ThemeLoadError(err.code, str(err), transient=err.transient) from err
         try:
@@ -173,6 +186,13 @@ async def _load(hass, session, msg, full_name, user_id, commit):
             raise ThemeLoadError(INVALID_THEME, "The theme file could not be read") from err
 
     return await THEME_CACHE.load(key, produce, _admit(user_id))
+
+
+async def load_original_themes(hass, user_id):
+    session = async_get_clientsession(hass)
+    return await _load(
+        hass, session, hats_originals.FULL_NAME, hats_originals.COMMIT, None, user_id
+    )
 
 
 @websocket_api.websocket_command(
@@ -211,7 +231,7 @@ async def ws_theme(hass, connection, msg):
     session = async_get_clientsession(hass)
     user_id = getattr(connection.user, "id", None)
     try:
-        themes = await _load(hass, session, msg, entry["full_name"], user_id, commit)
+        themes = await _load(hass, session, entry["full_name"], commit, msg.get("path"), user_id)
     except ThemeLoadError as err:
         connection.send_error(msg["id"], err.code, err.message)
         return
