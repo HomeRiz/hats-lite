@@ -83,7 +83,7 @@ describe("one phone breakpoint", () => {
 
   it("sticks the preview action bar on the same query", () => {
     const text = previewStyles.map((x) => x.cssText).join("\n");
-    expect(text).toMatch(new RegExp(`@media ${PHONE_QUERY.replace(/[()]/g, "\\$&")}\\s*\\{\\s*\\.actions\\s*\\{[^}]*position:\\s*sticky`));
+    expect(text).toMatch(new RegExp(`@media ${PHONE_QUERY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{\\s*\\.actions\\s*\\{[^}]*position:\\s*sticky`));
   });
 });
 
