@@ -15,6 +15,7 @@ from .api_advanced import async_register_advanced_commands
 from .api_calendar import async_register_calendar_commands
 from .api_install import ws_install_theme, ws_uninstall_theme
 from .api_mods import async_register_mods_commands
+from .api_local import async_register_local_commands
 from .api_originals import async_register_originals_commands
 from .api_people import async_register_people_commands
 from .api_schema import modes, variables
@@ -341,3 +342,4 @@ def async_register_commands(hass: HomeAssistant):
     async_register_advanced_commands(hass)
     async_register_calendar_commands(hass)
     async_register_originals_commands(hass)
+    async_register_local_commands(hass)
