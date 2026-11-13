@@ -7,6 +7,7 @@ HATS Lite is a Home Assistant integration that adds one panel to the sidebar for
 - **Browse** the theme catalog. If the Marketplace (Home Assistant 2026.11 and newer) or HACS is available the list comes from it, otherwise from the public HACS theme catalog. Every card shows the repository, description, stars and whether the theme is installed.
 - **Preview** a theme on your real dashboard. Pick a dashboard and a view, drag the divider to compare the current theme with the candidate, switch between desktop, tablet and phone widths, between normal and compact density, and between dark and light.
 - **Apply** a theme that is already installed, or **try** it for 30 seconds.
+- **Original HATS themes**: the Gallery includes the 21 original themes of the HATS project. They are not installed by the Marketplace or HACS, so an administrator adds one with the Add to my themes button, which saves a sanitized copy in the themes folder.
 - **Design** a simple theme with main and accent color, corner radius, glass blur, card tint and a background image, then save it as a theme file. Uploading a background and saving a theme need an administrator account.
 
 ## The safe try

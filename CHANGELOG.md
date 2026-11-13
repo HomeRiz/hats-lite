@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows Keep a Changelog and the
 
 ## [Unreleased]
 
+### Added
+
+- The 21 original HATS themes (from the HomeRiz/hats repository) appear in the Gallery as one entry. They can be previewed like any other theme, and an administrator can add one to the Home Assistant themes folder with the Add to my themes button.
+
+### Changed
+
+- The preview starts on the first real dashboard of the instance. The Map dashboard is listed last, and the empty generated Overview is left out of the list once another dashboard has content.
+
 ## [0.2.0] - 2026-11-12
 
 ### Added
