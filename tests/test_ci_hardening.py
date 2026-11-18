@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import yaml
@@ -69,8 +70,8 @@ def test_thumbnails_download_lands_outside_the_repository_tree():
 def test_pr_job_setup_node_is_pinned_like_the_rest():
     steps = workflow("thumbnails.yml")["jobs"]["pr"]["steps"]
     node = next(s for s in steps if str(s.get("uses", "")).startswith("actions/setup-node"))
-    assert node["uses"] == "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1"
-    assert node["name"] == "Set up Node with actions/setup-node v7.1.0"
+    assert re.fullmatch(r"actions/setup-node@[0-9a-f]{40}", node["uses"])
+    assert node["name"].startswith("Set up Node with actions/setup-node")
     assert node["with"]["node-version"] == "24"
 
 

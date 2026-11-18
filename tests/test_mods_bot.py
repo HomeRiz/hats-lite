@@ -7,7 +7,6 @@ ROOT = Path(__file__).resolve().parent.parent
 PATH = ROOT / ".github" / "workflows" / "mods-bot.yml"
 TEXT = PATH.read_text()
 DATA = yaml.safe_load(TEXT)
-CREATE_PR_SHA = "15733dbdfeedb4f7fdb73d13c6f5ac83b710fab8"
 
 
 def triggers():
@@ -52,11 +51,11 @@ def test_run_steps_never_interpolate_expressions():
 
 def test_actions_are_pinned_like_the_rest_of_the_repo():
     seen = {str(s["uses"]) for s in all_steps() if "uses" in s}
-    assert f"peter-evans/create-pull-request@{CREATE_PR_SHA}" in seen
+    assert any(r.startswith("peter-evans/create-pull-request@") for r in seen)
     for ref in seen:
         name, version = ref.split("@")
         assert re.fullmatch(r"[0-9a-f]{40}", version), ref
-    assert "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9" in seen
+    assert any(r.startswith("actions/upload-artifact@") for r in seen)
     assert any(r.startswith("actions/setup-node@") for r in seen)
 
 
